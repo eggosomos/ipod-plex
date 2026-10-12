@@ -357,7 +357,14 @@ function normBase(b) {
   if (!/:\d+$/.test(host) && /^http:/i.test(b)) b += ':32400';
   return b.replace(/\/+$/, '');
 }
-function baseUrl() { return conn.base || normBase(cfg.base) || normBase(DEFAULTS.base); }
+function baseUrl() {
+  if (conn.base) return conn.base;
+  const b = normBase(cfg.base) || normBase(DEFAULTS.base);
+  // En una página https el navegador bloquea las direcciones http (contenido mixto),
+  // así que no vale la pena construir la URL: mejor no devolverla.
+  if (b && pageIsHttps() && /^http:/i.test(b)) return '';
+  return b;
+}
 function connLabel() {
   if (!conn.base) return 'sin conexión';
   return conn.rank === 0 ? 'en casa' : conn.rank === 1 ? 'remota' : 'por relé';
@@ -372,7 +379,7 @@ async function ping(uri) {
   for (let i = 0; i < paths.length; i++) {
     const ctl = new AbortController();
     let timedOut = false;
-    const t = setTimeout(() => { timedOut = true; ctl.abort(); }, 2500);
+    const t = setTimeout(() => { timedOut = true; ctl.abort(); }, 4000);
     try {
       const r = await fetch(uri + paths[i], { signal: ctl.signal, cache: 'no-store', headers: { Accept: 'application/json' } });
       if (r.ok) {
@@ -388,7 +395,7 @@ async function ping(uri) {
 async function discoverConnections() {
   if (!cfg.token) return [];
   const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), 3000);
+  const t = setTimeout(() => ctl.abort(), 4500);
   try {
     const u = 'https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1&X-Plex-Token=' + encodeURIComponent(cfg.token) +
       '&X-Plex-Client-Identifier=' + encodeURIComponent(clientId) + '&X-Plex-Product=iPodPlex';
@@ -463,12 +470,17 @@ function plexUrl(path, params) {
 const NO_SERVER = 'No llego a tu servidor ni en casa ni fuera. Comprueba que el PC y Plex estén encendidos.';
 async function plex(path, params, retried) {
   if (!conn.tried) await resolveConnection();
+  const ctl = new AbortController();
+  const to = setTimeout(() => ctl.abort(), 15000);
   let r;
-  try { r = await fetch(plexUrl(path, params), { headers: { Accept: 'application/json' }, cache: 'no-store' }); }
+  try { r = await fetch(plexUrl(path, params), { signal: ctl.signal, headers: { Accept: 'application/json' }, cache: 'no-store' }); }
   catch (e) {
-    if (!retried) { await resolveConnection(true); return plex(path, params, true); }
+    clearTimeout(to);
+    const n = (retried || 0) + 1;
+    if (n <= 2) { await new Promise(done => setTimeout(done, 500 * n)); await resolveConnection(true); return plex(path, params, n); }
     throw new Error(NO_SERVER);
   }
+  clearTimeout(to);
   if (r.status === 401) throw new Error('El token no es válido. Revísalo en Ajustes > Conexión con Plex.');
   if (!r.ok) throw new Error('Plex respondió con error ' + r.status + '.');
   const j = await r.json();
@@ -476,24 +488,30 @@ async function plex(path, params, retried) {
 }
 async function plexWrite(method, path, params, retried) {
   if (!conn.tried) await resolveConnection();
+  const ctl = new AbortController();
+  const to = setTimeout(() => ctl.abort(), 15000);
   let r;
-  try { r = await fetch(plexUrl(path, params), { method: method }); }
+  try { r = await fetch(plexUrl(path, params), { method: method, signal: ctl.signal }); }
   catch (e) {
-    if (!retried) { await resolveConnection(true); return plexWrite(method, path, params, true); }
+    clearTimeout(to);
+    const n = (retried || 0) + 1;
+    if (n <= 2) { await new Promise(done => setTimeout(done, 500 * n)); await resolveConnection(true); return plexWrite(method, path, params, n); }
     throw new Error('Plex ha bloqueado la petición desde el navegador.');
   }
+  clearTimeout(to);
   if (r.status === 401) throw new Error('El token no es válido. Revísalo en Ajustes > Conexión con Plex.');
   if (!r.ok) throw new Error('Plex respondió con error ' + r.status + '.');
   return r;
 }
 function art(thumb, w) {
-  if (!thumb) return '';
+  const b = baseUrl();
+  if (!thumb || !b) return '';
   w = w || 300;
-  return baseUrl() + '/photo/:/transcode?width=' + w + '&height=' + w + '&minSize=1&upscale=0&url=' +
+  return b + '/photo/:/transcode?width=' + w + '&height=' + w + '&minSize=1&upscale=0&url=' +
     encodeURIComponent(thumb) + '&X-Plex-Token=' + encodeURIComponent(cfg.token);
 }
-function artDirect(thumb) { return thumb ? baseUrl() + thumb + '?X-Plex-Token=' + encodeURIComponent(cfg.token) : ''; }
-const trackUrl = t => baseUrl() + t.key + '?X-Plex-Token=' + encodeURIComponent(cfg.token);
+function artDirect(thumb) { const b = baseUrl(); return (thumb && b) ? b + thumb + '?X-Plex-Token=' + encodeURIComponent(cfg.token) : ''; }
+function trackUrl(t) { const b = baseUrl(); return b ? b + t.key + '?X-Plex-Token=' + encodeURIComponent(cfg.token) : ''; }
 
 async function getSection() {
   if (state.section) return state.section;
@@ -905,6 +923,7 @@ function playQueue(list, i, loader, total, qStart) {
   player.loader = loader || null;
   player.total = total != null ? total : player.queue.length;
   player.qStart = qStart != null ? qStart : 0;
+  audioErr = 0;
   if (player.shuffle) { player.shuffle = false; toggleShuffle(true); }
   loadTrack();
 }
@@ -990,6 +1009,18 @@ function refreshTools() { const s = cur(); if (s instanceof NowPlaying) s.update
 audio.addEventListener('ended', () => nextTrack(true));
 audio.addEventListener('timeupdate', () => { const s = cur(); if (s && s.tick) s.tick(); landTick(); });
 ['play', 'pause', 'playing', 'emptied'].forEach(ev => audio.addEventListener(ev, () => { updateHdIcon(); updateLandBar(); }));
+/* Si una canción no carga (típico fuera de casa, con conexión lenta o por relé),
+   reintenta una vez antes de rendirse y avisa si sigue fallando. */
+let audioErr = 0;
+audio.addEventListener('error', () => {
+  const t = currentTrack();
+  if (!t || offIds.has(t.id)) return; // descarga local: no es un fallo de red
+  if (audioErr >= 2) { flash('No se pudo cargar. Revisa Remote Access de Plex.'); return; }
+  audioErr++;
+  flash(conn.rank > 0 ? 'Conexión lenta, reintentando…' : 'Reintentando la canción…');
+  setTimeout(() => { if (currentTrack() === t) loadTrack(); }, 1500);
+});
+audio.addEventListener('playing', () => { audioErr = 0; });
 function updateHdIcon() { $('#hd-play').classList.toggle('on', !!currentTrack() && !audio.paused); }
 
 function setMediaSession(t) {
@@ -1492,7 +1523,7 @@ function settingsScreen() {
     { label: () => 'Vibración: ' + (cfg.vib ? 'Sí' : 'No'), act: () => { cfg.vib = !cfg.vib; saveCfg(); } },
     { label: () => 'Sonido de clic: ' + (cfg.sound ? 'Sí' : 'No'), act: () => { cfg.sound = !cfg.sound; saveCfg(); } },
     { label: () => 'Probar vibración', act: () => { buzz(); flash('¿Has notado la vibración?'); } },
-    { label: () => 'Servidor: ' + connLabel(), act: async () => { setStatus('Buscando servidor…'); await resolveConnection(true); clearStatus(); updateNet(); flash('Servidor: ' + connLabel()); } },
+    { label: () => 'Servidor: ' + connLabel(), act: async () => { setStatus('Buscando servidor…'); await resolveConnection(true); clearStatus(); updateNet(); const host = conn.base ? conn.base.replace(/^https?:\/\//i, '').split('/')[0] : ''; flash('Servidor: ' + connLabel() + (host ? ' · ' + host : '')); } },
     { label: () => 'Conexión con Plex', chev: true, act: () => openForm() },
     { label: () => 'Recargar biblioteca', act: () => { state.section = null; state.albums = null; state.artists = null; state.loved = undefined; state.cfIndex = 0; land.ready = false; flash('Biblioteca recargada'); } },
     { label: () => 'Borrar descargas', act: () => clearAllDownloads() }
