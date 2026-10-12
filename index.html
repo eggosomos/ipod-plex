@@ -1,0 +1,1924 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="white">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="iPod">
+<meta name="theme-color" content="#000000">
+<title>iPod</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{
+  --pad:10px;
+  --W:min(100vw,440px);
+  --u:min(calc((var(--W) - 30px)*.044),17px);
+  --wheel:min(calc(var(--W) - 56px),42vh);
+}
+@supports (height:100dvh){ :root{ --wheel:min(calc(var(--W) - 56px),42dvh); } }
+
+html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
+  font-family:-apple-system,"SF Pro Text","Helvetica Neue",Helvetica,Arial,sans-serif}
+html[data-theme=white] body{background:linear-gradient(#f7f8fa 0%,#e3e5ea 100%)}
+html[data-theme=black] body{background:#0b0b0d}
+
+/* ---------- Vertical: pantalla + rueda ---------- */
+#ipod{position:fixed;top:0;bottom:0;left:50%;width:var(--W);transform:translateX(-50%);
+  display:flex;flex-direction:column;
+  padding:max(env(safe-area-inset-top),10px) var(--pad) max(env(safe-area-inset-bottom),14px)}
+html.land #ipod{display:none}
+
+#frame{flex:1 1 0;min-height:0;width:100%;background:#0c0c0e;border-radius:20px;padding:5px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+html[data-theme=white] #frame{box-shadow:0 0 0 1px #aeb2ba,0 2px 8px rgba(0,0,0,.18)}
+#screen{position:relative;width:100%;height:100%;border-radius:15px;overflow:hidden;background:#fff;color:#111;font-size:var(--u)}
+#hd{position:relative;height:1.9em;display:flex;align-items:center;justify-content:space-between;padding:0 .6em;
+  background:linear-gradient(#f9fafb 0%,#d3d8df 100%);border-bottom:1px solid #8d939d;font-weight:700}
+#hd-title{position:absolute;left:3.6em;right:3.6em;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#hd-play{width:1.1em;height:1.1em;opacity:0;color:#2a6fd0}
+#hd-play.on{opacity:1}
+#hd-r{display:flex;align-items:center;gap:.35em;min-width:1em;justify-content:flex-end}
+#hd-ind{font-size:.85em;font-weight:800;color:#2a6fd0;white-space:nowrap}
+#hd-net{display:none;width:.8em;height:.8em;border-radius:50%;flex:none;background:#8a8f98}
+html.has-net #hd-net{display:block}
+#hd-net[data-net=search]{background:#8a8f98}
+#hd-net[data-net=off]{background:#d93a3a}
+#hd-net[data-net=home]{background:#3aa655}
+#hd-net[data-net=remote]{background:#2a6fd0}
+#hd-net[data-net=relay]{background:#e0a43a}
+#hd-bat{display:none;width:1.9em;height:.95em}
+html.has-bat #hd-bat{display:block}
+#body{position:absolute;top:1.9em;bottom:0;left:0;right:0;overflow:hidden}
+#screen.cf #hd{display:none}
+#screen.cf #body{top:0}
+
+.row{height:2.1em;display:flex;align-items:center;justify-content:space-between;padding:0 .7em;
+  border-bottom:1px solid #e7e9ed;white-space:nowrap;font-weight:600}
+.row .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.row .chev{font-size:1.3em;font-weight:700;opacity:.65;margin-left:.5em;line-height:1}
+.row .more{display:inline-flex;align-items:center;justify-content:center;height:100%;padding:0 .5em;font-size:1.25em;font-weight:900;line-height:1}
+.row.sel{background:linear-gradient(#63afff 0%,#1f72da 100%);color:#fff;border-bottom-color:#1a5fb8}
+.empty{padding:1.6em 1em;text-align:center;color:#555;line-height:1.4;font-weight:600}
+.empty small{display:block;margin-top:.6em;font-weight:500;color:#777;font-size:.82em}
+
+/* Corazón */
+.heart{display:inline-flex;align-items:center;justify-content:center;height:100%;padding:0 .15em 0 .6em;color:#a2a8b2}
+.heart svg{width:1.25em;height:1.25em;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round;pointer-events:none}
+.heart.on{color:#e5384a}
+.heart.on svg{fill:currentColor}
+.row.sel .heart{color:#fff}
+
+/* Cover Flow vertical */
+#screen.cf{background:linear-gradient(#2a2a2d 0%,#000 62%)}
+.cf-stage{position:absolute;left:0;right:0;top:0;height:77%;perspective:44em}
+.cfi{position:absolute;left:50%;top:44%;width:10em;height:10em;margin:-5em 0 0 -5em;background:#232326;
+  transition:transform .3s cubic-bezier(.22,.7,.3,1),opacity .25s;
+  -webkit-box-reflect:below .06em linear-gradient(transparent 52%,rgba(255,255,255,.4));
+  box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+.cfi img{width:100%;height:100%;object-fit:cover;display:block}
+.cfi.ph{display:flex;align-items:center;justify-content:center;font-size:3em;color:#666;
+  background:linear-gradient(135deg,#3a3a3f,#18181a)}
+.cf-t{position:absolute;left:0;right:0;bottom:.8em;text-align:center;color:#fff;padding:0 1em}
+.cf-t b{display:block;font-size:1.1em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cf-t span{display:block;color:#a9acb3;font-size:.95em;margin-top:.2em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Reproduciendo */
+.np{position:absolute;inset:0;padding:.9em 1em .6em;display:flex;flex-direction:column;align-items:center;gap:.35em}
+.np>*{flex:none}
+.np-art{flex:1 1 0;min-height:4em;aspect-ratio:1/1;max-width:100%;background:#d9dce2;box-shadow:0 2px 6px rgba(0,0,0,.35);overflow:hidden;
+  display:flex;align-items:center;justify-content:center;font-size:3em;color:#9aa0aa}
+.np-art img{width:100%;height:100%;object-fit:cover;display:block}
+.np-row{width:100%;display:flex;align-items:center;justify-content:space-between;margin-top:.1em}
+.np-count{color:#6b7280;font-size:.85em;font-weight:600}
+.np-tools{display:flex;align-items:center}
+.np-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;padding:.1em .3em;font-size:1.25em;color:#a2a8b2}
+.np-btn svg{width:1em;height:1em;fill:currentColor;display:block;pointer-events:none}
+.np-btn.on{color:#2a6fd0}
+.np-btn.one::after{content:'1';position:absolute;right:.15em;top:.3em;font-size:.42em;font-weight:900;background:#fff;border-radius:50%;
+  width:1.5em;height:1.5em;line-height:1.5em;text-align:center;color:#2a6fd0}
+.np-heart{height:auto;padding:.1em .3em;font-size:1.25em}
+.np-title{width:100%;text-align:center;font-weight:800;font-size:1.1em;line-height:1.35;height:1.35em;overflow:hidden;white-space:nowrap}
+.np-title>span{display:inline-block}
+.np-title.marq>span{animation:marq var(--t,8s) linear 1.2s infinite alternate}
+@keyframes marq{from{transform:translateX(0)}to{transform:translateX(calc(-1 * var(--d,0px)))}}
+.np-artist,.np-album{width:100%;text-align:center;color:#333;font-weight:600;font-size:.98em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.np-album{color:#666;font-weight:500}
+.np-bar{width:100%;height:.95em;margin-top:.4em;border:1px solid #8b919b;border-radius:.5em;background:linear-gradient(#e4e7ec,#fafbfc);overflow:hidden;position:relative}
+.np-fill{height:100%;width:0;background:linear-gradient(#7bbcff,#2679e0)}
+.np.scrub .np-bar{border-color:#1f72da;box-shadow:0 0 0 .15em rgba(38,121,224,.35)}
+.np-times{width:100%;display:flex;justify-content:space-between;font-size:.85em;color:#555;font-weight:600}
+.np-hint{width:100%;text-align:center;font-size:.74em;color:#8a8f98;height:1.2em}
+
+.flash{position:absolute;left:50%;bottom:1em;transform:translateX(-50%);background:rgba(20,20,22,.92);color:#fff;
+  padding:.5em 1em;border-radius:1em;font-weight:600;font-size:.9em;max-width:90%;text-align:center;z-index:60}
+
+/* Hoja de opciones (sirve en vertical y en horizontal) */
+.sheet{position:absolute;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;z-index:40}
+.sheet-card{width:100%;max-height:90%;display:flex;flex-direction:column;background:#f4f5f7;color:#111;border-radius:1em 1em 0 0;overflow:hidden}
+.sheet-title{flex:none;padding:.65em 1em;font-weight:800;border-bottom:1px solid rgba(128,128,128,.3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheet-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.sheet-row{display:flex;flex-direction:column;justify-content:center;min-height:2.5em;padding:.35em 1em;border-bottom:1px solid rgba(128,128,128,.22);font-weight:600}
+.sheet-row small{font-weight:500;opacity:.6;font-size:.82em}
+.sheet-row.cancel{flex:none;align-items:center;color:#2a6fd0;font-weight:800}
+
+/* Rueda */
+#wheelzone{flex:none;height:calc(var(--wheel) + 30px);width:100%;display:flex;align-items:flex-end;justify-content:center;
+  font-size:calc(var(--wheel)/22)}
+#wheel{position:relative;width:var(--wheel);height:var(--wheel);border-radius:50%;touch-action:none;
+  background:radial-gradient(circle at 50% 35%,#ffffff 0%,#eceef2 70%,#d9dbe1 100%);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.95),inset 0 -3px 8px rgba(0,0,0,.12),0 0 0 1px #b4b8c0,0 3px 8px rgba(0,0,0,.2)}
+html[data-theme=black] #wheel{
+  background:radial-gradient(circle at 50% 35%,#3b3b3f 0%,#26262a 70%,#19191c 100%);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),inset 0 -3px 8px rgba(0,0,0,.5),0 0 0 1px #000,0 3px 8px rgba(0,0,0,.5)}
+.wl{position:absolute;font-weight:800;color:#8b8f99;letter-spacing:.02em;pointer-events:none;font-size:.95em}
+html[data-theme=black] .wl{color:#b6b9c2}
+.wl.m{top:9%;left:50%;transform:translateX(-50%)}
+.wl.n{right:9%;top:50%;transform:translateY(-50%)}
+.wl.p{left:9%;top:50%;transform:translateY(-50%)}
+.wl.pl{bottom:8%;left:50%;transform:translateX(-50%)}
+.wl svg{width:1.7em;height:1.7em;fill:currentColor;display:block}
+#center{position:absolute;left:50%;top:50%;width:38%;height:38%;transform:translate(-50%,-50%);border-radius:50%;
+  background:radial-gradient(circle at 50% 30%,#ffffff 0%,#eceef2 75%,#dfe1e7 100%);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.9),0 0 0 1px #b4b8c0,0 1px 3px rgba(0,0,0,.25)}
+html[data-theme=black] #center{
+  background:radial-gradient(circle at 50% 30%,#46464b 0%,#2a2a2e 75%,#1d1d20 100%);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.14),0 0 0 1px #000,0 1px 3px rgba(0,0,0,.5)}
+#center.down{filter:brightness(.92)}
+
+/* ---------- Horizontal: Cover Flow a pantalla completa ---------- */
+#land{position:fixed;inset:0;display:none;background:#000;z-index:20;touch-action:none;overflow:hidden}
+html.land #land{display:block}
+#land-in{position:absolute;left:0;top:0;width:100%;height:100%;overflow:hidden;color:#fff;font-size:16px;
+  background:linear-gradient(#2b2b2e 0%,#000 62%)}
+.l-wrap{position:absolute;top:0;bottom:env(safe-area-inset-bottom);left:env(safe-area-inset-left);right:env(safe-area-inset-right);
+  display:flex;flex-direction:column}
+html.forced .l-wrap{top:0;bottom:0;left:0;right:0}
+.l-top{flex:none;height:1.9em;display:flex;align-items:center;justify-content:space-between;padding:0 1em}
+.l-title{font-weight:700;font-size:.85em;opacity:.7;letter-spacing:.04em}
+.l-btn{visibility:hidden;border-radius:1em;padding:.25em .8em;font-size:.8em;font-weight:700;color:#fff;background:rgba(255,255,255,.18)}
+html.forced .l-btn{visibility:visible}
+.l-stage{position:relative;flex:1 1 0;min-height:0;overflow:hidden}
+.l-cover{position:absolute;left:50%;top:calc(var(--cs,100px)*.16);width:var(--cs,100px);height:var(--cs,100px);
+  margin-left:calc(var(--cs,100px)*-.5);background:#232326;
+  transition:transform .3s cubic-bezier(.22,.7,.3,1),opacity .25s;
+  -webkit-box-reflect:below .05em linear-gradient(transparent 55%,rgba(255,255,255,.38));
+  box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+.l-cover img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.l-cover.ph{display:flex;align-items:center;justify-content:center;font-size:3em;color:#666;background:linear-gradient(135deg,#3a3a3f,#18181a)}
+.l-info{flex:none;height:2.7em;text-align:center;padding:0 1em}
+.l-info b{display:block;font-size:1.1em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.l-info span{display:block;font-size:.9em;color:#a9acb3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.l-bar{position:relative;flex:none;height:3.6em;display:flex;align-items:center;gap:.4em;padding:0 .8em;
+  background:rgba(255,255,255,.07);border-top:1px solid rgba(255,255,255,.12)}
+.l-prog{position:absolute;left:0;right:0;top:-1px;height:.2em;background:rgba(255,255,255,.16)}
+.l-fill{height:100%;width:0;background:#4da3ff}
+.l-ib{display:inline-flex;align-items:center;justify-content:center;width:2.4em;height:2.4em;flex:none}
+.l-ib svg{width:1.5em;height:1.5em;fill:#fff;pointer-events:none}
+.l-ib.txt{font-size:1.3em;font-weight:900;color:#fff;line-height:1}
+.l-now{flex:1;min-width:0;padding:0 .5em}
+.l-nt{display:block;font-size:.95em;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.l-na{display:block;font-size:.8em;color:#a9acb3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.l-heart{padding:0 .5em;color:#c4c8d0;font-size:1.1em}
+.l-heart.on{color:#ff4d63}
+
+.l-panel{position:absolute;left:0;right:0;top:1.9em;bottom:3.6em;background:#08080a;display:none;flex-direction:column;z-index:5}
+.l-panel.open{display:flex}
+.lp-head{flex:none;display:flex;align-items:center;gap:.6em;padding:0 1em;height:2.6em;border-bottom:1px solid rgba(255,255,255,.12)}
+.lp-head b{display:block;font-size:1.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lp-head .sub{display:block;font-size:.85em;color:#a9acb3}
+.lp-body{flex:1;min-height:0;display:flex;gap:1.2em;padding:.6em 1.1em}
+.lp-art{flex:none;height:100%;aspect-ratio:1/1;max-height:11em;align-self:center;background:#232326;overflow:hidden;display:flex;align-items:center;
+  justify-content:center;font-size:3em;color:#666;box-shadow:0 2px 10px rgba(0,0,0,.6)}
+.lp-art img{width:100%;height:100%;object-fit:cover;display:block}
+.lp-list{flex:1;min-width:0;overflow:hidden}
+.lp-row{display:flex;align-items:center;gap:.6em;height:2.3em;padding:0 .4em;border-bottom:1px solid rgba(255,255,255,.08)}
+.lp-row .n{width:1.6em;color:#8a8f98;font-size:.85em;text-align:right}
+.lp-row .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lp-row .d{color:#8a8f98;font-size:.85em}
+.lp-row.now{color:#5db1ff}
+.lp-row .heart{height:100%;padding:0 .2em 0 .4em;color:#8a8f98}
+.lp-row .heart.on{color:#ff4d63}
+.lp-row .mo{height:100%;display:inline-flex;align-items:center;padding:0 .4em;font-weight:900;color:#8a8f98}
+.lp-msg{padding:2em;text-align:center;color:#a9acb3}
+#land-in .sheet-card{background:#1c1d21;color:#fff}
+#land-in .sheet-list{overflow:hidden}
+#land-in .sheet-row.cancel{color:#6db6ff}
+#land-in .flash{bottom:5em}
+
+/* ---------- Formularios ---------- */
+#form,#prompt{position:fixed;inset:0;background:rgba(8,8,10,.94);display:none;align-items:center;justify-content:center;z-index:80;
+  padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));overflow:auto;touch-action:auto;
+  -webkit-user-select:text;user-select:text}
+#form.open,#prompt.open{display:flex}
+#form .card,#prompt .card{width:100%;max-width:420px;background:#1a1b1e;color:#eceef2;border-radius:18px;padding:20px;
+  box-shadow:0 0 0 1px #2c2e33}
+#form h2,#prompt h2{margin:0 0 4px;font-size:20px}
+#form p{margin:0 0 14px;color:#a3a7b0;font-size:14px;line-height:1.4}
+#form label{display:block;font-size:13px;color:#a3a7b0;margin:12px 0 5px}
+#form input,#prompt input{width:100%;font-size:16px;padding:11px 12px;border-radius:10px;border:1px solid #3a3d44;background:#0f1012;color:#fff;
+  -webkit-user-select:text;user-select:text;margin-top:10px}
+#form input{margin-top:0}
+.btns{display:flex;gap:10px;margin-top:18px}
+.btns button{flex:1;font-size:16px;padding:12px;border-radius:10px;border:0;font-weight:600;color:#fff;background:#2f333a}
+.btns button.pri{background:#2a78e4}
+#form .res{margin-top:14px;font-size:14px;line-height:1.4;min-height:1.4em}
+#form .res.ok{color:#6fd68a}
+#form .res.err{color:#ff8d85}
+</style>
+</head>
+<body>
+
+<div id="ipod">
+  <div id="frame">
+    <div id="screen">
+      <div id="hd">
+        <svg id="hd-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>
+        <div id="hd-title">iPod</div>
+        <div id="hd-r">
+          <span id="hd-net"></span>
+          <span id="hd-ind"></span>
+          <svg id="hd-bat" viewBox="0 0 38 18"><rect x="1" y="2" width="31" height="14" rx="3" fill="none" stroke="#333" stroke-width="1.6"/><rect x="33" y="6" width="3.5" height="6" rx="1" fill="#333"/><rect id="hd-lvl" x="3.5" y="4.5" width="26" height="9" rx="1.5" fill="#3aa655"/></svg>
+        </div>
+      </div>
+      <div id="body"></div>
+    </div>
+  </div>
+
+  <div id="wheelzone">
+    <div id="wheel">
+      <div class="wl m">MENU</div>
+      <div class="wl n"><svg viewBox="0 0 24 24"><path d="M4 5v14l9-7zM13 5v14l9-7z"/></svg></div>
+      <div class="wl p"><svg viewBox="0 0 24 24"><path d="M20 5v14l-9-7zM11 5v14l-9-7z"/></svg></div>
+      <div class="wl pl"><svg viewBox="0 0 24 24"><path d="M3 5v14l8-7zM14 5h3v14h-3zM19 5h3v14h-3z" transform="translate(-1 0)"/></svg></div>
+      <div id="center"></div>
+    </div>
+  </div>
+</div>
+
+<div id="land">
+  <div id="land-in">
+    <div class="l-wrap">
+      <div class="l-top">
+        <span class="l-btn" data-act="l-exit">‹ Vertical</span>
+        <span class="l-title">COVER FLOW</span>
+        <span class="l-btn" data-act="l-flip">⟲ Girar</span>
+      </div>
+      <div class="l-stage"></div>
+      <div class="l-info"><b></b><span></span></div>
+      <div class="l-bar">
+        <div class="l-prog"><div class="l-fill"></div></div>
+        <span class="l-ib" data-act="prev"><svg viewBox="0 0 24 24"><path d="M20 5v14l-9-7zM11 5v14l-9-7z"/></svg></span>
+        <span class="l-ib" data-act="play"></span>
+        <span class="l-ib" data-act="next"><svg viewBox="0 0 24 24"><path d="M4 5v14l9-7zM13 5v14l9-7z"/></svg></span>
+        <div class="l-now"><span class="l-nt"></span><span class="l-na"></span></div>
+        <span class="heart l-heart" data-act="heart-now"></span>
+        <span class="l-ib txt" data-act="more-now">⋯</span>
+      </div>
+      <div class="l-panel" id="l-panel">
+        <div class="lp-head">
+          <span class="l-ib" data-act="panel-close"><svg viewBox="0 0 24 24"><path d="M15.4 5.4 14 4l-8 8 8 8 1.4-1.4L8.8 12z"/></svg></span>
+          <div><b id="lp-title"></b><span class="sub" id="lp-sub"></span></div>
+        </div>
+        <div class="lp-body"><div class="lp-art" id="lp-art">♪</div><div class="lp-list" id="lp-list"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="form">
+  <div class="card">
+    <h2>Conexión con Plex</h2>
+    <p>Estos datos se guardan solo en este iPhone.</p>
+    <label for="f-base">Dirección en casa</label>
+    <input id="f-base" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="http://192.168.1.158:32400">
+    <label for="f-remote">Dirección fuera de casa (opcional)</label>
+    <input id="f-remote" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Por ejemplo la de Tailscale: http://100.x.x.x:32400">
+    <label for="f-token">Token de Plex</label>
+    <input id="f-token" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Pega aquí tu token">
+    <label for="f-lib">Biblioteca de música (opcional)</label>
+    <input id="f-lib" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Si lo dejas vacío, uso la primera">
+    <div class="res" id="f-res"></div>
+    <div class="btns">
+      <button id="f-cancel" type="button">Cerrar</button>
+      <button id="f-save" type="button" class="pri">Guardar y probar</button>
+    </div>
+  </div>
+</div>
+
+<div id="prompt">
+  <div class="card">
+    <h2 id="pr-title"></h2>
+    <input id="pr-input" type="text" autocapitalize="sentences" spellcheck="false">
+    <div class="btns">
+      <button id="pr-cancel" type="button">Cancelar</button>
+      <button id="pr-ok" type="button" class="pri">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+/* Valoración que guarda el corazón. En Plexamp, el corazón = 5 estrellas (10 en la escala de Plex),
+   y eso es lo que mete la canción en la lista "❤️ Tracks". */
+const HEART_RATING = 10;
+const isLiked = t => !!t && t.rating >= 10;
+
+const HEART_SVG = '<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
+const PLAY_SVG = '<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></svg>';
+const PAUSE_SVG = '<svg viewBox="0 0 24 24"><path d="M6 4.5h4v15H6zM14 4.5h4v15h-4z"/></svg>';
+const SHUFFLE_SVG = '<svg viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>';
+const REPEAT_SVG = '<svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>';
+
+/* ================= Configuración ================= */
+const DEFAULTS = { base: 'http://192.168.1.158:32400', remote: '', token: '', section: '', theme: 'white', vib: true, sound: true };
+const cfg = Object.assign({}, DEFAULTS);
+try { Object.assign(cfg, JSON.parse(localStorage.getItem('ipodcfg') || '{}')); } catch (e) {}
+function saveCfg() { try { localStorage.setItem('ipodcfg', JSON.stringify(cfg)); } catch (e) {} }
+function applyTheme() { document.documentElement.dataset.theme = cfg.theme; }
+const state = { section: null, albums: null, artists: null, cfIndex: 0, loved: undefined };
+let clientId = '';
+try { clientId = localStorage.getItem('ipodcid') || ''; if (!clientId) { clientId = 'ipod-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('ipodcid', clientId); } } catch (e) { clientId = 'ipod-web'; }
+
+/* ================= Conexión con Plex: casa, fuera de casa y relé ================= */
+const conn = { base: null, rank: 0, tried: false, machineId: null, checkedAt: 0 };
+const pageIsHttps = () => location.protocol === 'https:';
+function normBase(b) {
+  b = (b || '').trim();
+  if (!b) return '';
+  if (!/^https?:\/\//i.test(b)) b = 'http://' + b;
+  const host = b.replace(/^https?:\/\//i, '').split('/')[0];
+  if (!/:\d+$/.test(host) && /^http:/i.test(b)) b += ':32400';
+  return b.replace(/\/+$/, '');
+}
+function baseUrl() { return conn.base || normBase(cfg.base) || normBase(DEFAULTS.base); }
+function connLabel() {
+  if (!conn.base) return 'sin conexión';
+  return conn.rank === 0 ? 'en casa' : conn.rank === 1 ? 'remota' : 'por relé';
+}
+// Devuelve 'ok' si responde y el token vale, 'auth' si el servidor está ahí pero
+// el token falla, y false si no se llega. Antes un 401 se daba por bueno como
+// conexión, lo que podía dejar elegido un servidor al que el token no sirve.
+async function ping(uri) {
+  const tok = encodeURIComponent(cfg.token || '');
+  const paths = ['/identity?X-Plex-Token=' + tok, '/library/sections?X-Plex-Token=' + tok];
+  let auth = false;
+  for (let i = 0; i < paths.length; i++) {
+    const ctl = new AbortController();
+    let timedOut = false;
+    const t = setTimeout(() => { timedOut = true; ctl.abort(); }, 2500);
+    try {
+      const r = await fetch(uri + paths[i], { signal: ctl.signal, cache: 'no-store', headers: { Accept: 'application/json' } });
+      if (r.ok) {
+        if (i === 0) { try { const j = await r.json(); if (j.MediaContainer && j.MediaContainer.machineIdentifier) conn.machineId = j.MediaContainer.machineIdentifier; } catch (e) {} }
+        return 'ok';
+      }
+      if (r.status === 401) auth = true; // el servidor está ahí, solo falla el token
+    } catch (e) { if (timedOut) break; }
+    finally { clearTimeout(t); }
+  }
+  return auth ? 'auth' : false;
+}
+async function discoverConnections() {
+  if (!cfg.token) return [];
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 3000);
+  try {
+    const u = 'https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1&X-Plex-Token=' + encodeURIComponent(cfg.token) +
+      '&X-Plex-Client-Identifier=' + encodeURIComponent(clientId) + '&X-Plex-Product=iPodPlex';
+    const r = await fetch(u, { signal: ctl.signal, cache: 'no-store', headers: { Accept: 'application/json' } });
+    if (!r.ok) return [];
+    const list = await r.json();
+    const servers = (Array.isArray(list) ? list : []).filter(d => (d.provides || '').split(',').indexOf('server') !== -1);
+    if (!servers.length) return [];
+    // Si ya sabemos el identificador de máquina, elegimos ese servidor; si no,
+    // el primero propio. Antes se cogía siempre un único servidor.
+    const owned = servers.filter(d => d.owned);
+    const pick = (conn.machineId && servers.find(d => d.clientIdentifier === conn.machineId)) ||
+      owned[0] || servers[0];
+    return (pick.connections || []).map(c => ({ uri: String(c.uri || '').replace(/\/+$/, ''), rank: c.relay ? 3 : c.local ? 0 : 1 })).filter(c => c.uri);
+  } catch (e) { return []; } finally { clearTimeout(t); }
+}
+let resolving = null;
+function resolveConnection(force) {
+  if (resolving && !force) return resolving;
+  resolving = (async () => {
+    const cands = new Map();
+    const add = (uri, rank) => { if (!uri) return; if (pageIsHttps() && /^http:/i.test(uri)) return; if (!cands.has(uri)) cands.set(uri, rank); };
+    add(normBase(cfg.base), 0);
+    add(normBase(cfg.remote), 1);
+    if (cfg.last) add(cfg.last, 1); // la última que funcionó, para ir directo fuera de casa
+    const disc = await discoverConnections();
+    disc.forEach(c => add(c.uri, c.rank));
+    let best = null, authBest = null;
+    await new Promise(done => {
+      let pending = cands.size, timer = null;
+      if (!pending) return done();
+      cands.forEach((rank, uri) => {
+        ping(uri).then(res => {
+          pending--;
+          if (res) {
+            const cand = { uri, rank };
+            if (res === 'ok') {
+              if (!best || rank < best.rank) best = cand;
+              if (rank === 0) return done();
+              if (!timer) timer = setTimeout(done, 350);
+            } else if (!authBest || rank < authBest.rank) authBest = cand;
+          }
+          if (pending === 0) done();
+        });
+      });
+    });
+    // Preferimos una conexión válida; si solo hay respuesta 401, la usamos para
+    // que el error sea "token no válido" y no "no llego al servidor".
+    const chosen = best || authBest;
+    conn.base = chosen ? chosen.uri : null;
+    conn.rank = chosen ? chosen.rank : 0;
+    if (chosen) { cfg.last = chosen.uri; saveCfg(); }
+    conn.tried = true;
+    conn.checkedAt = Date.now();
+    updateNet();
+    return conn.base;
+  })();
+  return resolving;
+}
+window.addEventListener('online', () => resolveConnection(true).then(updateNet).catch(() => {}));
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && Date.now() - conn.checkedAt > 60000) resolveConnection(true).then(updateNet).catch(() => {});
+});
+
+/* ================= Cliente de Plex ================= */
+function plexUrl(path, params) {
+  const u = new URL(baseUrl() + path);
+  Object.entries(params || {}).forEach(([k, v]) => u.searchParams.set(k, v));
+  u.searchParams.set('X-Plex-Token', cfg.token);
+  return u.toString();
+}
+const NO_SERVER = 'No llego a tu servidor ni en casa ni fuera. Comprueba que el PC y Plex estén encendidos.';
+async function plex(path, params, retried) {
+  if (!conn.tried) await resolveConnection();
+  let r;
+  try { r = await fetch(plexUrl(path, params), { headers: { Accept: 'application/json' }, cache: 'no-store' }); }
+  catch (e) {
+    if (!retried) { await resolveConnection(true); return plex(path, params, true); }
+    throw new Error(NO_SERVER);
+  }
+  if (r.status === 401) throw new Error('El token no es válido. Revísalo en Ajustes > Conexión con Plex.');
+  if (!r.ok) throw new Error('Plex respondió con error ' + r.status + '.');
+  const j = await r.json();
+  return j.MediaContainer || {};
+}
+async function plexWrite(method, path, params, retried) {
+  if (!conn.tried) await resolveConnection();
+  let r;
+  try { r = await fetch(plexUrl(path, params), { method: method }); }
+  catch (e) {
+    if (!retried) { await resolveConnection(true); return plexWrite(method, path, params, true); }
+    throw new Error('Plex ha bloqueado la petición desde el navegador.');
+  }
+  if (r.status === 401) throw new Error('El token no es válido. Revísalo en Ajustes > Conexión con Plex.');
+  if (!r.ok) throw new Error('Plex respondió con error ' + r.status + '.');
+  return r;
+}
+function art(thumb, w) {
+  if (!thumb) return '';
+  w = w || 300;
+  return baseUrl() + '/photo/:/transcode?width=' + w + '&height=' + w + '&minSize=1&upscale=0&url=' +
+    encodeURIComponent(thumb) + '&X-Plex-Token=' + encodeURIComponent(cfg.token);
+}
+function artDirect(thumb) { return thumb ? baseUrl() + thumb + '?X-Plex-Token=' + encodeURIComponent(cfg.token) : ''; }
+const trackUrl = t => baseUrl() + t.key + '?X-Plex-Token=' + encodeURIComponent(cfg.token);
+
+async function getSection() {
+  if (state.section) return state.section;
+  const mc = await plex('/library/sections');
+  const music = (mc.Directory || []).filter(d => d.type === 'artist');
+  if (!music.length) throw new Error('No encuentro ninguna biblioteca de música en tu servidor.');
+  let pick = null;
+  if (cfg.section) pick = music.find(d => d.title.toLowerCase() === cfg.section.trim().toLowerCase());
+  pick = pick || music[0];
+  state.section = pick.key;
+  return pick.key;
+}
+async function loadAll(path, params) {
+  let all = [], start = 0, total = 1;
+  while (start < total) {
+    const mc = await plex(path, Object.assign({}, params, { 'X-Plex-Container-Start': start, 'X-Plex-Container-Size': 500 }));
+    const md = mc.Metadata || [];
+    total = mc.totalSize != null ? mc.totalSize : md.length;
+    all = all.concat(md);
+    if (!md.length) break;
+    start += 500;
+  }
+  return all;
+}
+async function loadAlbums() {
+  if (state.albums) return state.albums;
+  const s = await getSection();
+  const list = await loadAll('/library/sections/' + s + '/albums');
+  const key = a => (a.parentTitle || '').toLowerCase();
+  list.sort((a, b) => key(a).localeCompare(key(b), 'es') || (a.year || 0) - (b.year || 0) || (a.title || '').localeCompare(b.title || '', 'es'));
+  state.albums = list;
+  return list;
+}
+async function loadArtists() {
+  if (state.artists) return state.artists;
+  const s = await getSection();
+  const list = await loadAll('/library/sections/' + s + '/all', { type: 8 });
+  list.sort((a, b) => (a.titleSort || a.title || '').localeCompare(b.titleSort || b.title || '', 'es'));
+  state.artists = list;
+  return list;
+}
+function norm(t) {
+  const p = t.Media && t.Media[0] && t.Media[0].Part && t.Media[0].Part[0];
+  return { id: String(t.ratingKey), title: t.title || '', artist: t.grandparentTitle || t.originalTitle || '',
+    album: t.parentTitle || '', thumb: t.parentThumb || t.thumb || t.grandparentThumb || '',
+    dur: (t.duration || 0) / 1000, key: p ? p.key : null, rating: t.userRating || 0 };
+}
+async function loadTracks(albumKey) {
+  const mc = await plex('/library/metadata/' + albumKey + '/children');
+  return (mc.Metadata || []).map(norm).filter(t => t.key);
+}
+
+/* ---- Favoritas: la lista "❤️ Tracks" que crea Plexamp ---- */
+async function findLoved() {
+  if (state.loved !== undefined) return state.loved;
+  const mc = await plex('/playlists', { playlistType: 'audio' });
+  const all = (mc.Metadata || []);
+  const p = all.find(x => /(❤|♥|💖|💛|<3)/.test(x.title || '') && /track|favori/i.test(x.title || '')) ||
+            all.find(x => /(❤|♥|💖|<3)/.test(x.title || ''));
+  state.loved = p || null;
+  return state.loved;
+}
+async function loadFavorites() {
+  const p = await findLoved();
+  if (p) return (await loadAll('/playlists/' + p.ratingKey + '/items')).map(norm).filter(t => t.key);
+  const s = await getSection();
+  const out = [];
+  let start = 0, total = 1;
+  while (start < total && start < 1500) {
+    const mc = await plex('/library/sections/' + s + '/all', { type: 10, sort: 'userRating:desc', 'X-Plex-Container-Start': start, 'X-Plex-Container-Size': 300 });
+    const md = mc.Metadata || [];
+    total = mc.totalSize != null ? mc.totalSize : md.length;
+    md.forEach(t => { if (t.userRating >= 10) out.push(norm(t)); });
+    if (!md.length || !(md[md.length - 1].userRating >= 10)) break;
+    start += 300;
+  }
+  return out.filter(t => t.key);
+}
+
+/* ================= Corazón = 5 estrellas en Plex ================= */
+async function setRating(id, rating) {
+  const url = plexUrl('/:/rate', { key: id, identifier: 'com.plexapp.plugins.library', rating: rating });
+  let applied = false;
+  try { const r = await fetch(url, { method: 'PUT' }); applied = r.ok; } catch (e) {}
+  if (applied) return;
+  // Si no hubo confirmación (por ejemplo CORS), comprobamos si Plex lo guardó.
+  const mc = await plex('/library/metadata/' + id);
+  const t = (mc.Metadata || [])[0];
+  const now = t && t.userRating ? t.userRating : 0;
+  const want = rating < 0 ? 0 : rating;
+  if (Math.abs(now - want) > 0.01) throw new Error('Plex no ha guardado la valoración.');
+}
+let rateBusy = false;
+async function toggleHeart(t) {
+  if (!t || rateBusy) return;
+  const liked = isLiked(t);
+  const prev = t.rating;
+  t.rating = liked ? 0 : HEART_RATING;
+  state.loved = undefined;
+  refreshHearts();
+  rateBusy = true;
+  try {
+    await setRating(t.id, liked ? -1 : HEART_RATING);
+    flash(liked ? 'Quitada de favoritas' : '❤ Guardada en Plex (5 estrellas)');
+  } catch (e) {
+    t.rating = prev;
+    refreshHearts();
+    flash(e.message || 'No se pudo guardar');
+  } finally { rateBusy = false; }
+}
+function refreshHearts() {
+  const s = cur();
+  if (s instanceof ListScreen) s.draw();
+  else if (s instanceof NowPlaying) s.updateTools();
+  updateLandBar();
+  if ($('#l-panel').classList.contains('open')) landDrawPanel();
+}
+
+/* ================= Listas de reproducción: añadir y crear ================= */
+async function machineId() {
+  if (conn.machineId) return conn.machineId;
+  const mc = await plex('/identity');
+  conn.machineId = mc.machineIdentifier;
+  return conn.machineId;
+}
+const itemUri = (mid, ids) => 'server://' + mid + '/com.plexapp.plugins.library/library/metadata/' + ids.join(',');
+async function addToPlaylist(pl, tracks) {
+  const mid = await machineId();
+  await plexWrite('PUT', '/playlists/' + pl.ratingKey + '/items', { uri: itemUri(mid, tracks.map(t => t.id)) });
+}
+async function createPlaylist(title, tracks) {
+  const mid = await machineId();
+  await plexWrite('POST', '/playlists', { type: 'audio', title: title, smart: 0, uri: itemUri(mid, tracks.map(t => t.id)) });
+}
+async function openPlaylistSheet(tracks) {
+  setStatus('Cargando listas…');
+  try {
+    const mc = await plex('/playlists', { playlistType: 'audio' });
+    clearStatus();
+    const lists = (mc.Metadata || []).filter(p => !(p.smart === true || String(p.smart) === '1'))
+      .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'es'));
+    const n = tracks.length;
+    const rows = [{ label: '＋ Nueva lista…', sub: n > 1 ? n + ' canciones' : '', act: async () => {
+      const name = await askText('Nueva lista de reproducción', 'Nombre de la lista');
+      if (!name) return;
+      setStatus('Creando lista…');
+      try { await createPlaylist(name, tracks); clearStatus(); flash('Lista «' + name + '» creada'); }
+      catch (e) { clearStatus(); flash(e.message); }
+    } }];
+    lists.forEach(p => rows.push({ label: p.title, sub: (p.leafCount || 0) + ' canciones', act: async () => {
+      setStatus('Añadiendo…');
+      try { await addToPlaylist(p, tracks); clearStatus(); flash('Añadida a «' + p.title + '»'); }
+      catch (e) { clearStatus(); flash(e.message); }
+    } }));
+    openSheet(n > 1 ? 'Añadir ' + n + ' canciones a…' : 'Añadir a lista', rows);
+  } catch (e) { clearStatus(); flash(e.message); }
+}
+
+/* ================= Descargas (sin conexión) ================= */
+const idbState = { db: null };
+function idb() {
+  return new Promise((res, rej) => {
+    if (idbState.db) return res(idbState.db);
+    let rq;
+    try { rq = indexedDB.open('ipod-offline', 1); } catch (e) { return rej(e); }
+    rq.onupgradeneeded = () => { const d = rq.result; d.createObjectStore('meta', { keyPath: 'id' }); d.createObjectStore('blob', { keyPath: 'id' }); };
+    rq.onsuccess = () => { idbState.db = rq.result; res(idbState.db); };
+    rq.onerror = () => rej(rq.error);
+  });
+}
+function idbRun(stores, mode, fn) {
+  return idb().then(db => new Promise((res, rej) => {
+    const tx = db.transaction(stores, mode);
+    let out;
+    try { out = fn.apply(null, stores.map(n => tx.objectStore(n))); } catch (e) { rej(e); return; }
+    tx.oncomplete = () => res(out && out.result !== undefined ? out.result : out);
+    tx.onerror = () => rej(tx.error);
+    tx.onabort = () => rej(tx.error);
+  }));
+}
+const offIds = new Set();
+// `offReady` permite esperar a saber qué hay descargado antes de abrir la lista,
+// en vez de arriesgarse a pintarla vacía por la carrera con IndexedDB.
+const offReady = idbRun(['meta'], 'readonly', m => m.getAllKeys())
+  .then(keys => { (keys || []).forEach(k => offIds.add(String(k))); })
+  .catch(() => {});
+
+async function fetchBlob(url, onProg) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('Plex respondió con error ' + r.status + '.');
+  const total = +r.headers.get('content-length') || 0;
+  if (!r.body || !r.body.getReader) return await r.blob();
+  const rd = r.body.getReader(), chunks = [];
+  let got = 0;
+  for (;;) {
+    const x = await rd.read();
+    if (x.done) break;
+    chunks.push(x.value); got += x.value.length;
+    if (onProg) onProg(total ? got / total : null, got);
+  }
+  return new Blob(chunks, { type: r.headers.get('content-type') || 'audio/mpeg' });
+}
+async function downloadTrack(t, prefix) {
+  if (offIds.has(t.id)) return false;
+  try { if (navigator.storage && navigator.storage.persist) { const p = navigator.storage.persist(); if (p && p.catch) p.catch(() => {}); } } catch (e) {}
+  const pre = prefix || 'Descargando';
+  setStatus(pre + '…');
+  const audioBlob = await fetchBlob(baseUrl() + t.key + '?download=1&X-Plex-Token=' + encodeURIComponent(cfg.token), (p, got) => {
+    setStatus(pre + '… ' + (p != null ? Math.round(p * 100) + '%' : (got / 1048576).toFixed(1) + ' MB'));
+  });
+  let artBlob = null;
+  try { if (t.thumb) { const r = await fetch(art(t.thumb, 300)); if (r.ok) artBlob = await r.blob(); } } catch (e) {}
+  await idbRun(['meta', 'blob'], 'readwrite', (m, b) => {
+    m.put({ id: t.id, title: t.title, artist: t.artist, album: t.album, thumb: t.thumb, dur: t.dur, key: t.key, ts: Date.now(), size: audioBlob.size });
+    return b.put({ id: t.id, audio: audioBlob, art: artBlob });
+  });
+  offIds.add(t.id);
+  return true;
+}
+async function downloadMany(list) {
+  const todo = list.filter(t => t && t.key && !offIds.has(t.id));
+  if (!todo.length) { flash('Ya están todas descargadas'); return; }
+  try {
+    for (let i = 0; i < todo.length; i++) await downloadTrack(todo[i], 'Descargando ' + (i + 1) + '/' + todo.length);
+    clearStatus(); flash('Descargadas ' + todo.length + ' canciones');
+  } catch (e) { clearStatus(); flash(e.message || 'La descarga ha fallado'); }
+}
+async function removeDownload(t) {
+  try {
+    await idbRun(['meta', 'blob'], 'readwrite', (m, b) => { m.delete(t.id); return b.delete(t.id); });
+    offIds.delete(t.id);
+    flash('Descarga eliminada');
+    const s = cur();
+    if (s instanceof ListScreen && s.isDownloads) {
+      s.items = s.items.filter(x => x.id !== t.id); s.total = s.items.length;
+      s.sel = clamp(s.sel, 0, Math.max(0, s.total - 1)); s.top = Math.min(s.top, s.sel); s.draw();
+    }
+  } catch (e) { flash('No se pudo eliminar'); }
+}
+async function clearAllDownloads() {
+  try {
+    await idbRun(['meta', 'blob'], 'readwrite', (m, b) => { m.clear(); return b.clear(); });
+    offIds.clear(); flash('Descargas borradas');
+  } catch (e) { flash('No se pudo borrar'); }
+}
+const safeName = s => String(s).replace(/[\/\\:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'cancion';
+async function saveToFiles(t) {
+  try {
+    let blob = null;
+    if (offIds.has(t.id)) { const rec = await idbRun(['blob'], 'readonly', b => b.get(t.id)); if (rec && rec.audio) blob = rec.audio; }
+    if (!blob) {
+      setStatus('Preparando…');
+      blob = await fetchBlob(baseUrl() + t.key + '?download=1&X-Plex-Token=' + encodeURIComponent(cfg.token), p => { if (p != null) setStatus('Preparando… ' + Math.round(p * 100) + '%'); });
+    }
+    clearStatus();
+    const ext = (String(t.key).split('?')[0].split('.').pop() || 'mp3').toLowerCase();
+    const name = safeName((t.artist ? t.artist + ' - ' : '') + t.title) + '.' + ext;
+    const file = new File([blob], name, { type: blob.type || 'audio/mpeg' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      openSheet('Archivo listo', [{ label: 'Guardar en Archivos…', sub: name, act: () => { navigator.share({ files: [file] }).catch(() => {}); } }]);
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    }
+  } catch (e) { clearStatus(); flash(e.message || 'No se pudo preparar el archivo'); }
+}
+
+/* ================= Hojas de opciones y texto ================= */
+const sheet = { el: null, items: [] };
+const hostEl = () => document.documentElement.classList.contains('land') ? $('#land-in') : $('#screen');
+function openSheet(title, items) {
+  closeSheet();
+  const el = document.createElement('div');
+  el.className = 'sheet';
+  el.dataset.sheet = 'x';
+  el.innerHTML = '<div class="sheet-card"><div class="sheet-title">' + esc(title) + '</div><div class="sheet-list">' +
+    items.map((it, i) => '<div class="sheet-row" data-sheet="' + i + '"><span>' + esc(it.label) + '</span>' + (it.sub ? '<small>' + esc(it.sub) + '</small>' : '') + '</div>').join('') +
+    '</div><div class="sheet-row cancel" data-sheet="x">Cancelar</div></div>';
+  hostEl().appendChild(el);
+  sheet.el = el; sheet.items = items;
+}
+function closeSheet() { if (sheet.el) { sheet.el.remove(); sheet.el = null; } }
+function sheetTap(k) {
+  if (k === 'x') { closeSheet(); return; }
+  const it = sheet.items[+k];
+  if (!it) return;
+  closeSheet();
+  if (it.act) it.act();
+}
+function askText(title, ph) {
+  return new Promise(res => {
+    const inp = $('#pr-input');
+    $('#pr-title').textContent = title;
+    inp.value = ''; inp.placeholder = ph || '';
+    $('#prompt').classList.add('open');
+    setTimeout(() => inp.focus(), 60);
+    const done = v => { $('#prompt').classList.remove('open'); $('#pr-ok').onclick = null; $('#pr-cancel').onclick = null; res(v); };
+    $('#pr-ok').onclick = () => done(inp.value.trim());
+    $('#pr-cancel').onclick = () => done(null);
+  });
+}
+function openTrackOptions(t, list) {
+  if (!t || !t.key) return;
+  const rows = [];
+  rows.push({ label: isLiked(t) ? 'Quitar de favoritas' : '❤ Añadir a favoritas', act: () => toggleHeart(t) });
+  rows.push({ label: 'Añadir a lista de reproducción…', act: () => openPlaylistSheet([t]) });
+  if (list && list.length > 1 && list.length <= 400) rows.push({ label: 'Añadir las ' + list.length + ' canciones a una lista…', act: () => openPlaylistSheet(list) });
+  if (offIds.has(t.id)) rows.push({ label: 'Quitar descarga', act: () => removeDownload(t) });
+  else rows.push({ label: 'Descargar para sin conexión', act: async () => {
+    try { await downloadTrack(t); clearStatus(); flash('Descargada'); } catch (e) { clearStatus(); flash(e.message || 'La descarga ha fallado'); }
+  } });
+  if (list && list.length > 1 && list.length <= 400) rows.push({ label: 'Descargar las ' + list.length + ' canciones', act: () => downloadMany(list) });
+  rows.push({ label: 'Guardar en Archivos…', act: () => saveToFiles(t) });
+  openSheet(t.title, rows);
+}
+function setStatus(text) {
+  const host = hostEl();
+  let el = host.querySelector('.flash.status');
+  if (!el) { el = document.createElement('div'); el.className = 'flash status'; host.appendChild(el); }
+  el.textContent = text;
+}
+function clearStatus() { document.querySelectorAll('.flash.status').forEach(e => e.remove()); }
+
+/* ================= Vibración y sonido de la rueda ================= */
+let ac = null;
+function ensureAudio() {
+  try {
+    if (!ac) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) ac = new AC(); }
+    if (ac && ac.state === 'suspended') ac.resume();
+  } catch (e) {}
+}
+const hapticLabel = document.createElement('label');
+hapticLabel.style.display = 'none';
+const hapticInput = document.createElement('input');
+hapticInput.type = 'checkbox';
+hapticInput.setAttribute('switch', '');
+hapticLabel.appendChild(hapticInput);
+function buzz() {
+  // Si la web va dentro de una app nativa (envoltorio de Xcode), usa la vibración real del iPhone.
+  try { const h = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.haptic; if (h) { h.postMessage('tick'); return; } } catch (e) {}
+  try { document.head.appendChild(hapticLabel); hapticLabel.click(); hapticLabel.remove(); } catch (e) {}
+  try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) {}
+}
+function clickSound() {
+  try {
+    if (!ac || ac.state !== 'running') return;
+    const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'square';
+    o.frequency.setValueAtTime(2300, t);
+    o.frequency.exponentialRampToValueAtTime(900, t + 0.012);
+    g.gain.setValueAtTime(0.04, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.016);
+    o.connect(g); g.connect(ac.destination);
+    o.start(t); o.stop(t + 0.02);
+  } catch (e) {}
+}
+function haptic() {
+  if (cfg.vib) buzz();
+  if (cfg.sound) clickSound();
+}
+
+/* ================= Batería (solo si el dispositivo la expone) ================= */
+function setBattery(level, charging) {
+  const f = $('#hd-lvl');
+  if (!f || level == null) return;
+  document.documentElement.classList.add('has-bat');
+  f.setAttribute('width', String(Math.max(1, Math.round(26 * level))));
+  f.setAttribute('fill', level <= 0.2 && !charging ? '#d93a3a' : '#3aa655');
+}
+window.__setBattery = setBattery; // lo usa el envoltorio nativo
+try {
+  if (navigator.getBattery) navigator.getBattery().then(b => {
+    const up = () => setBattery(b.level, b.charging);
+    up(); b.addEventListener('levelchange', up); b.addEventListener('chargingchange', up);
+  }).catch(() => {});
+} catch (e) {}
+function updateIndicators() {
+  $('#hd-ind').textContent = (player.shuffle ? '⇄' : '') + (player.repeat === 'all' ? ' ↻' : player.repeat === 'one' ? ' ↻1' : '');
+}
+/* Dónde estás conectado: en casa (verde), remota (azul), relé (ámbar), sin conexión (rojo) */
+function updateNet() {
+  const el = $('#hd-net');
+  if (!el) return;
+  const h = document.documentElement;
+  if (!conn.tried) { el.dataset.net = 'search'; h.classList.remove('has-net'); el.title = 'Buscando servidor…'; return; }
+  if (!conn.base) { el.dataset.net = 'off'; h.classList.add('has-net'); el.title = 'Sin conexión'; return; }
+  el.dataset.net = conn.rank === 0 ? 'home' : conn.rank === 1 ? 'remote' : 'relay';
+  h.classList.add('has-net');
+  el.title = connLabel() + (cfg.last === conn.base ? '' : '');
+}
+
+/* ================= Reproductor ================= */
+const audio = new Audio();
+audio.preload = 'auto';
+audio.setAttribute('playsinline', '');
+const player = { queue: [], i: -1, shuffle: false, repeat: 'off', orig: null, loader: null, total: 0, qStart: 0 };
+let objUrl = null, loadSeq = 0;
+
+function fmt(s) {
+  if (!isFinite(s) || s < 0) s = 0;
+  s = Math.floor(s);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+function currentTrack() { return player.queue[player.i] || null; }
+function playQueue(list, i, loader, total, qStart) {
+  player.queue = list.slice(); player.i = i; player.orig = null;
+  player.loader = loader || null;
+  player.total = total != null ? total : player.queue.length;
+  player.qStart = qStart != null ? qStart : 0;
+  if (player.shuffle) { player.shuffle = false; toggleShuffle(true); }
+  loadTrack();
+}
+// Trae la siguiente página cuando la lista venía paginada (p. ej. "Canciones").
+async function ensureMore() {
+  if (!player.loader) return false;
+  const before = player.queue.length;
+  if (player.qStart + before >= player.total) return false;
+  const r = await player.loader(player.qStart + before, 100);
+  const more = (r.items || []).filter(t => t && t.key);
+  if (r.total != null) player.total = r.total;
+  more.forEach(t => player.queue.push(t));
+  return player.queue.length > before;
+}
+async function loadTrack() {
+  const t = currentTrack();
+  if (!t) return;
+  const seq = ++loadSeq;
+  let src = trackUrl(t);
+  if (offIds.has(t.id)) {
+    try {
+      const rec = await idbRun(['blob'], 'readonly', b => b.get(t.id));
+      if (seq !== loadSeq) return;
+      if (rec && rec.audio) { if (objUrl) URL.revokeObjectURL(objUrl); objUrl = URL.createObjectURL(rec.audio); src = objUrl; }
+    } catch (e) {}
+  }
+  audio.src = src;
+  const p = audio.play();
+  if (p && p.catch) p.catch(() => flash('Toca ⏯ para reproducir'));
+  setMediaSession(t);
+  const s = cur();
+  if (s && s.refresh) s.refresh();
+  updateLandBar();
+  if ($('#l-panel').classList.contains('open')) landDrawPanel();
+}
+async function nextTrack(auto) {
+  if (auto === true && player.repeat === 'one') { audio.currentTime = 0; audio.play().catch(() => {}); return; }
+  if (player.i < player.queue.length - 1) { player.i++; loadTrack(); return; }
+  if (player.loader && player.qStart + player.queue.length < player.total) {
+    setStatus('Cargando más canciones…');
+    try { await ensureMore(); } catch (e) {}
+    clearStatus();
+    if (player.i < player.queue.length - 1) { player.i++; loadTrack(); return; }
+  }
+  if (player.repeat === 'all' && player.queue.length) { player.i = 0; loadTrack(); }
+  else { audio.pause(); audio.currentTime = 0; }
+}
+function prevTrack() {
+  if (audio.currentTime > 3 || player.i <= 0) { audio.currentTime = 0; return; }
+  player.i--; loadTrack();
+}
+function togglePlay() {
+  if (!player.queue.length) { flash('Elige primero una canción'); return; }
+  if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+}
+function toggleShuffle(silent) {
+  const t = currentTrack();
+  if (!player.shuffle) {
+    player.orig = player.queue.slice();
+    const rest = player.queue.filter(x => x !== t);
+    for (let i = rest.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = rest[i]; rest[i] = rest[j]; rest[j] = x; }
+    player.queue = t ? [t].concat(rest) : rest;
+    player.i = t ? 0 : -1;
+    // Al mezclar, la carga por páginas deja de tener sentido: nos quedamos con lo cargado.
+    player.loader = null; player.qStart = 0; player.total = player.queue.length;
+    player.shuffle = true;
+  } else {
+    if (player.orig) { player.queue = player.orig; player.i = Math.max(0, player.queue.indexOf(t)); }
+    player.orig = null;
+    player.shuffle = false;
+  }
+  updateIndicators();
+  if (silent !== true) { flash('Aleatorio: ' + (player.shuffle ? 'activado' : 'desactivado')); refreshTools(); }
+}
+function toggleRepeat() {
+  player.repeat = player.repeat === 'off' ? 'all' : player.repeat === 'all' ? 'one' : 'off';
+  updateIndicators();
+  flash('Repetir: ' + (player.repeat === 'off' ? 'no' : player.repeat === 'all' ? 'todo' : 'esta canción'));
+  refreshTools();
+}
+function refreshTools() { const s = cur(); if (s instanceof NowPlaying) s.updateTools(); }
+
+audio.addEventListener('ended', () => nextTrack(true));
+audio.addEventListener('timeupdate', () => { const s = cur(); if (s && s.tick) s.tick(); landTick(); });
+['play', 'pause', 'playing', 'emptied'].forEach(ev => audio.addEventListener(ev, () => { updateHdIcon(); updateLandBar(); }));
+function updateHdIcon() { $('#hd-play').classList.toggle('on', !!currentTrack() && !audio.paused); }
+
+function setMediaSession(t) {
+  if (!('mediaSession' in navigator)) return;
+  try {
+    navigator.mediaSession.metadata = new MediaMetadata({ title: t.title, artist: t.artist, album: t.album,
+      artwork: t.thumb ? [{ src: art(t.thumb, 512), sizes: '512x512', type: 'image/jpeg' }] : [] });
+  } catch (e) {}
+}
+if ('mediaSession' in navigator) {
+  const h = (a, f) => { try { navigator.mediaSession.setActionHandler(a, f); } catch (e) {} };
+  h('play', () => audio.play());
+  h('pause', () => audio.pause());
+  h('nexttrack', () => nextTrack());
+  h('previoustrack', prevTrack);
+  h('seekto', d => { if (d && d.seekTime != null) audio.currentTime = d.seekTime; });
+}
+
+/* ================= Pantallas (vertical) ================= */
+const stack = [];
+const cur = () => stack[stack.length - 1];
+function push(s) { stack.push(s); show(); }
+function pop() { if (stack.length > 1) { stack.pop(); show(); } }
+function show() {
+  const s = cur();
+  $('#screen').className = s.cls || '';
+  $('#hd-title').textContent = s.title || '';
+  s.mount();
+  updateHdIcon();
+}
+function flash(msg) {
+  const el = document.createElement('div');
+  el.className = 'flash';
+  el.textContent = msg;
+  hostEl().appendChild(el);
+  setTimeout(() => el.remove(), 2000);
+}
+async function openAsync(title, fn) {
+  const m = new Message(title, 'Cargando…');
+  push(m);
+  try {
+    const scr = await fn();
+    if (cur() === m) { stack[stack.length - 1] = scr; show(); }
+  } catch (e) {
+    if (cur() === m) m.set(e.message || 'Algo ha fallado.', 'Pulsa MENU para volver.');
+  }
+}
+
+class Message {
+  constructor(title, text, sub) { this.title = title; this.text = text; this.sub = sub || ''; }
+  set(text, sub) { this.text = text; this.sub = sub || ''; if (cur() === this) this.mount(); }
+  mount() { $('#body').innerHTML = '<div class="empty">' + esc(this.text) + (this.sub ? '<small>' + esc(this.sub) + '</small>' : '') + '</div>'; }
+  scroll() {} select() {}
+}
+
+class ListScreen {
+  constructor(title, o) {
+    this.title = title;
+    this.items = o.items || [];
+    this.total = o.total != null ? o.total : this.items.length;
+    this.label = o.label || (x => x);
+    this.chevron = o.chevron === undefined ? true : o.chevron;
+    this.tracks = !!o.tracks;
+    this.hearts = this.tracks && o.hearts !== false;
+    this.isDownloads = !!o.isDownloads;
+    this.emptyText = o.emptyText || 'No hay nada aquí todavía.';
+    this.onSelect = o.onSelect || (() => {});
+    this.loader = o.loader || null;
+    this.pageSize = 100;
+    this.pending = new Set();
+    this.sel = 0; this.top = 0;
+    this.step = 0.35;
+  }
+  rows() {
+    const fs = parseFloat(getComputedStyle($('#screen')).fontSize) || 14;
+    return Math.max(3, Math.floor($('#body').clientHeight / (fs * 2.1)));
+  }
+  mount() { this.draw(); }
+  hasChev(it) { return typeof this.chevron === 'function' ? !!this.chevron(it) : !!this.chevron; }
+  ensure(i) {
+    if (!this.loader || i < 0 || i >= this.total || this.items[i] !== undefined) return;
+    const p = Math.floor(i / this.pageSize);
+    if (this.pending.has(p)) return;
+    this.pending.add(p);
+    this.loader(p * this.pageSize, this.pageSize).then(r => {
+      r.items.forEach((it, k) => { this.items[p * this.pageSize + k] = it; });
+      if (r.total != null) this.total = r.total;
+      if (cur() === this) this.draw();
+    }).catch(() => { this.pending.delete(p); });
+  }
+  draw() {
+    if (!this.total) { $('#body').innerHTML = '<div class="empty">' + esc(this.emptyText) + '</div>'; return; }
+    const rows = this.rows();
+    let h = '';
+    for (let k = 0; k < rows; k++) {
+      const idx = this.top + k;
+      if (idx >= this.total) break;
+      const it = this.items[idx];
+      if (it === undefined) this.ensure(idx);
+      const txt = it === undefined ? '…' : this.label(it);
+      const chev = it !== undefined && this.hasChev(it);
+      const isT = this.tracks && it !== undefined && it.key;
+      h += '<div class="row' + (idx === this.sel ? ' sel' : '') + '"><span class="t">' + esc(txt) + '</span>' +
+        (chev ? '<span class="chev">›</span>' : '') +
+        (isT && idx === this.sel ? '<span class="more" data-i="' + idx + '">⋯</span>' : '') +
+        (isT && this.hearts ? '<span class="heart' + (isLiked(it) ? ' on' : '') + '" data-i="' + idx + '">' + HEART_SVG + '</span>' : '') + '</div>';
+    }
+    $('#body').innerHTML = h;
+    this.ensure(this.sel + 30);
+  }
+  scroll(d) {
+    const n = clamp(this.sel + d, 0, this.total - 1);
+    if (n === this.sel) return;
+    this.sel = n;
+    const rows = this.rows();
+    if (this.sel < this.top) this.top = this.sel;
+    if (this.sel >= this.top + rows) this.top = this.sel - rows + 1;
+    haptic();
+    this.draw();
+  }
+  select() {
+    const it = this.items[this.sel];
+    if (it !== undefined) this.onSelect(it, this.sel, this);
+  }
+  listForOptions() { return this.loader ? null : this.items.filter(x => x && x.key); }
+}
+
+/* ---- Cover Flow vertical ---- */
+function cfTransform(o) {
+  if (o === 0) return 'translate3d(0,0,6em) rotateY(0deg)';
+  const s = Math.sign(o), a = Math.abs(o);
+  const x = s * (6.4 + (a - 1) * 1.35);
+  return 'translate3d(' + x + 'em,0,0) rotateY(' + (-s * 62) + 'deg)';
+}
+class CoverFlow {
+  constructor(albums) { this.title = 'Cover Flow'; this.cls = 'cf'; this.albums = albums; this.i = state.cfIndex || 0; this.els = new Map(); this.step = 0.26; }
+  mount() {
+    this.i = clamp(state.cfIndex || 0, 0, this.albums.length - 1);
+    $('#body').innerHTML = '<div class="cf-stage"></div><div class="cf-t"><b></b><span></span></div>';
+    this.stage = $('.cf-stage');
+    this.els = new Map();
+    this.draw();
+  }
+  make(k) {
+    const a = this.albums[k];
+    const el = document.createElement('div');
+    el.className = 'cfi';
+    if (!a.thumb) { el.classList.add('ph'); el.textContent = '♪'; return el; }
+    const img = new Image();
+    img.draggable = false;
+    img.src = art(a.thumb, 400);
+    let tried = false;
+    img.onerror = () => {
+      if (!tried) { tried = true; img.src = artDirect(a.thumb); }
+      else { img.remove(); el.classList.add('ph'); el.textContent = '♪'; }
+    };
+    el.appendChild(img);
+    return el;
+  }
+  place(el, o) {
+    el.style.transform = cfTransform(o);
+    el.style.zIndex = String(100 - Math.abs(o));
+    el.style.opacity = Math.abs(o) > 5 ? '0' : '1';
+  }
+  draw() {
+    const lo = Math.max(0, this.i - 6), hi = Math.min(this.albums.length - 1, this.i + 6);
+    for (const [k, el] of Array.from(this.els.entries())) if (k < lo || k > hi) { el.remove(); this.els.delete(k); }
+    for (let k = lo; k <= hi; k++) {
+      let el = this.els.get(k);
+      if (!el) {
+        el = this.make(k);
+        el.style.transition = 'none';
+        this.place(el, k - this.i);
+        this.stage.appendChild(el);
+        this.els.set(k, el);
+        void el.offsetWidth;
+        el.style.transition = '';
+      }
+      this.place(el, k - this.i);
+    }
+    const a = this.albums[this.i];
+    $('.cf-t b').textContent = a ? a.title : '';
+    $('.cf-t span').textContent = a ? a.parentTitle || '' : '';
+  }
+  scroll(d) {
+    const n = clamp(this.i + d, 0, this.albums.length - 1);
+    if (n === this.i) return;
+    this.i = n; state.cfIndex = n;
+    haptic();
+    this.draw();
+  }
+  select() { const a = this.albums[this.i]; if (a) openAlbum(a); }
+}
+
+/* ---- Reproduciendo ---- */
+class NowPlaying {
+  constructor() { this.title = 'Reproduciendo'; this.scrub = false; this.step = 0.3; }
+  mount() {
+    $('#body').innerHTML =
+      '<div class="np' + (this.scrub ? ' scrub' : '') + '">' +
+      '<div class="np-art">♪</div>' +
+      '<div class="np-row"><span class="np-count"></span><span class="np-tools">' +
+      '<span class="np-btn" data-np="shuffle">' + SHUFFLE_SVG + '</span>' +
+      '<span class="np-btn" data-np="repeat">' + REPEAT_SVG + '</span>' +
+      '<span class="heart np-heart" data-np="heart"></span>' +
+      '<span class="np-btn" data-np="more" style="font-weight:900">⋯</span></span></div>' +
+      '<div class="np-title"></div><div class="np-artist"></div><div class="np-album"></div>' +
+      '<div class="np-bar"><div class="np-fill"></div></div>' +
+      '<div class="np-times"><span class="el">0:00</span><span class="rem">-0:00</span></div>' +
+      '<div class="np-hint"></div></div>';
+    this.refresh();
+  }
+  hint() { return this.scrub ? 'Gira la rueda para avanzar o retroceder' : 'Centro: avanzar o retroceder'; }
+  setTitle(text) {
+    const el = $('.np-title');
+    if (!el) return;
+    el.classList.remove('marq');
+    el.innerHTML = '<span></span>';
+    const sp = el.firstChild;
+    sp.textContent = text;
+    requestAnimationFrame(() => {
+      const d = sp.scrollWidth - el.clientWidth;
+      if (d > 2) { el.style.setProperty('--d', d + 'px'); el.style.setProperty('--t', (d / 28 + 2).toFixed(1) + 's'); el.classList.add('marq'); }
+    });
+  }
+  refresh() {
+    const t = currentTrack();
+    const root = $('.np');
+    if (!root) return;
+    this.updateTools();
+    if (!t) {
+      this.setTitle('Nada en reproducción');
+      root.querySelector('.np-hint').textContent = 'Elige una canción en el menú';
+      return;
+    }
+    root.querySelector('.np-count').textContent = (player.i + 1) + ' de ' + player.queue.length;
+    this.setTitle(t.title);
+    root.querySelector('.np-artist').textContent = t.artist;
+    root.querySelector('.np-album').textContent = t.album;
+    const artBox = root.querySelector('.np-art');
+    if (t.thumb) {
+      artBox.innerHTML = '';
+      const img = new Image();
+      img.src = art(t.thumb, 500);
+      img.onerror = () => { img.onerror = null; img.src = artDirect(t.thumb); };
+      artBox.appendChild(img);
+    } else artBox.textContent = '♪';
+    root.querySelector('.np-hint').textContent = this.hint();
+    this.tick();
+  }
+  updateTools() {
+    const root = $('.np');
+    if (!root) return;
+    const t = currentTrack();
+    const hh = root.querySelector('.np-heart');
+    hh.innerHTML = HEART_SVG;
+    hh.classList.toggle('on', isLiked(t));
+    root.querySelector('[data-np=shuffle]').classList.toggle('on', player.shuffle);
+    const rp = root.querySelector('[data-np=repeat]');
+    rp.classList.toggle('on', player.repeat !== 'off');
+    rp.classList.toggle('one', player.repeat === 'one');
+  }
+  tick() {
+    const root = $('.np');
+    if (!root) return;
+    const t = currentTrack();
+    const dur = (isFinite(audio.duration) && audio.duration > 0) ? audio.duration : (t ? t.dur : 0);
+    const pos = audio.currentTime || 0;
+    root.querySelector('.np-fill').style.width = dur ? Math.min(100, pos / dur * 100) + '%' : '0';
+    root.querySelector('.el').textContent = fmt(pos);
+    root.querySelector('.rem').textContent = '-' + fmt(Math.max(0, dur - pos));
+  }
+  scroll(d) {
+    if (!this.scrub || !currentTrack()) return;
+    const dur = (isFinite(audio.duration) && audio.duration > 0) ? audio.duration : currentTrack().dur;
+    audio.currentTime = clamp(audio.currentTime + d * Math.max(2, dur / 70), 0, Math.max(0, dur - 0.5));
+    haptic();
+    this.tick();
+  }
+  select() {
+    if (!currentTrack()) return;
+    this.scrub = !this.scrub;
+    const root = $('.np');
+    if (root) { root.classList.toggle('scrub', this.scrub); root.querySelector('.np-hint').textContent = this.hint(); }
+  }
+}
+
+/* ================= Acciones del menú ================= */
+const trackList = (title, tracks, extra) => new ListScreen(title, Object.assign({
+  items: tracks, chevron: false, tracks: true, label: t => t.title,
+  onSelect: (t, i) => { playQueue(tracks, i); push(new NowPlaying()); }
+}, extra || {}));
+
+function openAlbum(a) {
+  openAsync(a.title, async () => trackList(a.title, await loadTracks(a.ratingKey)));
+}
+function openCoverFlow() {
+  openAsync('Cover Flow', async () => {
+    const albums = await loadAlbums();
+    if (!albums.length) throw new Error('No hay álbumes en tu biblioteca de música.');
+    return new CoverFlow(albums);
+  });
+}
+function openPlaylists() {
+  openAsync('Listas', async () => {
+    const mc = await plex('/playlists', { playlistType: 'audio' });
+    const lists = (mc.Metadata || []).filter(p => !p.playlistType || p.playlistType === 'audio')
+      .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'es'));
+    return new ListScreen('Listas de reproducción', {
+      items: lists, label: p => p.title, emptyText: 'No hay listas de música en tu servidor.',
+      onSelect: p => openAsync(p.title, async () => {
+        const raw = await loadAll('/playlists/' + p.ratingKey + '/items');
+        return trackList(p.title, raw.map(norm).filter(t => t.key), { emptyText: 'Esta lista está vacía.' });
+      })
+    });
+  });
+}
+function openFavorites() {
+  openAsync('Favoritas', async () =>
+    trackList('Favoritas', await loadFavorites(), { emptyText: 'Aún no tienes favoritas. Pulsa el corazón de una canción.' }));
+}
+function openDownloads() {
+  openAsync('Descargas', async () => {
+    await offReady;
+    const metas = await idbRun(['meta'], 'readonly', m => m.getAll());
+    const tracks = (metas || []).map(x => Object.assign({ rating: 0 }, x))
+      .sort((a, b) => (a.artist + a.album + a.title).localeCompare(b.artist + b.album + b.title, 'es'));
+    tracks.forEach(t => offIds.add(t.id));
+    return trackList('Descargas', tracks, { hearts: false, isDownloads: true,
+      emptyText: 'No has descargado nada todavía. Pulsa ⋯ en una canción y elige Descargar.' });
+  });
+}
+function openArtists() {
+  openAsync('Artistas', async () => {
+    const artists = await loadArtists();
+    return new ListScreen('Artistas', {
+      items: artists, label: a => a.title,
+      onSelect: a => openAsync(a.title, async () => {
+        const mc = await plex('/library/metadata/' + a.ratingKey + '/children');
+        const albums = (mc.Metadata || []).sort((x, y) => (x.year || 0) - (y.year || 0));
+        return new ListScreen(a.title, { items: albums, label: x => x.title, onSelect: openAlbum });
+      })
+    });
+  });
+}
+function openAlbums() {
+  openAsync('Álbumes', async () => {
+    const albums = await loadAlbums();
+    return new ListScreen('Álbumes', { items: albums, label: a => a.title, onSelect: openAlbum });
+  });
+}
+function openRecent() {
+  openAsync('Recién añadido', async () => {
+    const s = await getSection();
+    const mc = await plex('/library/sections/' + s + '/albums', { sort: 'addedAt:desc', 'X-Plex-Container-Start': 0, 'X-Plex-Container-Size': 60 });
+    return new ListScreen('Recién añadido', { items: mc.Metadata || [], label: a => a.title, onSelect: openAlbum });
+  });
+}
+function openSongs() {
+  openAsync('Canciones', async () => {
+    const s = await getSection();
+    const q = (start, size) => plex('/library/sections/' + s + '/all',
+      { type: 10, sort: 'titleSort', 'X-Plex-Container-Start': start, 'X-Plex-Container-Size': size });
+    const first = await q(0, 100);
+    const items = (first.Metadata || []).map(norm);
+    return new ListScreen('Canciones', {
+      items, total: first.totalSize != null ? first.totalSize : items.length, chevron: false, tracks: true, label: t => t.title,
+      loader: async (start, size) => { const mc = await q(start, size); return { items: (mc.Metadata || []).map(norm), total: mc.totalSize }; },
+      onSelect: (t, i, self) => {
+        const list = [];
+        for (let k = i; k < self.items.length && self.items[k] !== undefined; k++) if (self.items[k].key) list.push(self.items[k]);
+        // Cola completa: al terminar lo cargado, se piden más páginas sin parar la música.
+        const loader = async (start, size) => {
+          const mc = await q(start, size);
+          return { items: (mc.Metadata || []).map(norm).filter(x => x.key), total: mc.totalSize };
+        };
+        playQueue(list, 0, loader, self.total, i);
+        push(new NowPlaying());
+      }
+    });
+  });
+}
+function openShuffle() {
+  openAsync('Aleatorio', async () => {
+    const s = await getSection();
+    const head = await plex('/library/sections/' + s + '/all', { type: 10, 'X-Plex-Container-Start': 0, 'X-Plex-Container-Size': 1 });
+    const total = head.totalSize || 0;
+    if (!total) throw new Error('No hay canciones en tu biblioteca.');
+    const jobs = [];
+    for (let n = 0; n < 10; n++) {
+      const start = Math.floor(Math.random() * Math.max(1, total - 10));
+      jobs.push(plex('/library/sections/' + s + '/all', { type: 10, 'X-Plex-Container-Start': start, 'X-Plex-Container-Size': 10 }));
+    }
+    const res = await Promise.all(jobs);
+    const seen = new Set();
+    let list = [];
+    res.forEach(mc => (mc.Metadata || []).forEach(t => { if (!seen.has(t.ratingKey)) { seen.add(t.ratingKey); list.push(norm(t)); } }));
+    list = list.filter(t => t.key);
+    for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = list[i]; list[i] = list[j]; list[j] = x; }
+    if (!list.length) throw new Error('No he podido elegir canciones.');
+    playQueue(list, 0);
+    return new NowPlaying();
+  });
+}
+
+/* ---- Búsqueda en toda la biblioteca de música (artistas, álbumes y canciones) ---- */
+function openSearch() {
+  askText('Buscar', 'Artista, álbum o canción…').then(q => {
+    if (!q) return;
+    openAsync('Buscar', async () => {
+      const items = await searchEverything(q);
+      return searchResultsScreen(items, q);
+    });
+  });
+}
+// Prueba varias formas de buscar por si el servidor usa una u otra API.
+async function searchEverything(q) {
+  const s = await getSection();
+  let items = [];
+  // 1) Dentro de la biblioteca de música (lo más fiable)
+  try {
+    const mc = await plex('/library/sections/' + s + '/search', { query: q, limit: 40 });
+    items = searchFlat(mc);
+  } catch (e) {}
+  // 2) Búsqueda global de Plex
+  if (!items.length) {
+    try { const mc = await plex('/search', { query: q, limit: 40 }); items = searchFlat(mc); } catch (e) {}
+  }
+  // 3) Búsqueda por centros ("hubs"), como hace el Plexamp
+  if (!items.length) {
+    try { const mc = await plex('/hubs/search', { query: q, limit: 40 }); items = searchFlat(mc); } catch (e) {}
+  }
+  return items;
+}
+// Normaliza la respuesta, venga como Metadata plano, SearchResult o Hub.
+function searchFlat(mc) {
+  if (!mc) return [];
+  if (Array.isArray(mc.Metadata) && mc.Metadata.length) return mc.Metadata;
+  const out = [];
+  (mc.SearchResult || mc.Hub || []).forEach(h => (h.Metadata || []).forEach(m => out.push(m)));
+  return out;
+}
+function searchResultsScreen(items, q) {
+  const wanted = { artist: 1, album: 1, track: 1 };
+  const groups = [['artist', 'Artistas'], ['album', 'Álbumes'], ['track', 'Canciones']];
+  const rows = [];
+  groups.forEach((g) => {
+    const type = g[0], name = g[1];
+    const md = items.filter(x => x && wanted[x.type] && x.type === type).slice(0, 25);
+    if (!md.length) return;
+    rows.push({ head: true, title: name });
+    md.forEach(m => rows.push(type === 'track' ? norm(m) : m));
+  });
+  if (!rows.length) throw new Error('Nada encontrado para «' + q + '».');
+  return new ListScreen('Resultados', {
+    items: rows, tracks: true,
+    chevron: it => !it.head && it.type !== 'track',
+    label: it => it.head ? it.title
+      : (it.type === 'artist' || it.type === 'album') ? it.title + (it.year ? ' · ' + it.year : '')
+      : it.title,
+    onSelect: it => {
+      if (!it || it.head) return;
+      if (it.type === 'artist') openArtistFromSearch(it);
+      else if (it.type === 'album') openAlbum(it);
+      else if (it.key) { playQueue([it], 0); push(new NowPlaying()); }
+    }
+  });
+}
+function openArtistFromSearch(a) {
+  openAsync(a.title, async () => {
+    const mc = await plex('/library/metadata/' + a.ratingKey + '/children');
+    const albums = (mc.Metadata || []).sort((x, y) => (x.year || 0) - (y.year || 0));
+    return new ListScreen(a.title, { items: albums, label: x => x.title, onSelect: openAlbum });
+  });
+}
+
+function openQueue() {
+  if (!player.queue.length) { flash('La cola está vacía'); return; }
+  const scr = new ListScreen('Cola', {
+    items: player.queue, chevron: false, tracks: true,
+    label: t => (t === currentTrack() ? '▶ ' : '') + t.title,
+    onSelect: (t, i) => { player.i = i; loadTrack(); push(new NowPlaying()); }
+  });
+  scr.sel = Math.max(0, player.i);
+  scr.top = Math.max(0, scr.sel - 2);
+  push(scr);
+}
+function musicMenu() {
+  const items = [
+    { label: 'Artistas', act: openArtists },
+    { label: 'Álbumes', act: openAlbums },
+    { label: 'Canciones', act: openSongs },
+    { label: 'Recién añadido', act: openRecent }
+  ];
+  return new ListScreen('Música', { items, label: it => it.label, onSelect: it => it.act() });
+}
+function settingsScreen() {
+  const items = [
+    { label: () => 'Tema: ' + (cfg.theme === 'black' ? 'Negro' : 'Blanco'), act: () => { cfg.theme = cfg.theme === 'black' ? 'white' : 'black'; saveCfg(); applyTheme(); } },
+    { label: () => 'Vibración: ' + (cfg.vib ? 'Sí' : 'No'), act: () => { cfg.vib = !cfg.vib; saveCfg(); } },
+    { label: () => 'Sonido de clic: ' + (cfg.sound ? 'Sí' : 'No'), act: () => { cfg.sound = !cfg.sound; saveCfg(); } },
+    { label: () => 'Probar vibración', act: () => { buzz(); flash('¿Has notado la vibración?'); } },
+    { label: () => 'Servidor: ' + connLabel(), act: async () => { setStatus('Buscando servidor…'); await resolveConnection(true); clearStatus(); updateNet(); flash('Servidor: ' + connLabel()); } },
+    { label: () => 'Conexión con Plex', chev: true, act: () => openForm() },
+    { label: () => 'Recargar biblioteca', act: () => { state.section = null; state.albums = null; state.artists = null; state.loved = undefined; state.cfIndex = 0; land.ready = false; flash('Biblioteca recargada'); } },
+    { label: () => 'Borrar descargas', act: () => clearAllDownloads() }
+  ];
+  return new ListScreen('Ajustes', {
+    items, label: it => it.label(), chevron: it => !!it.chev,
+    onSelect: (it, i, s) => { it.act(); s.draw(); }
+  });
+}
+function mainMenu() {
+  const items = [
+    { label: 'Cover Flow', act: openCoverFlow },
+    { label: 'Listas de reproducción', act: openPlaylists },
+    { label: 'Favoritas', act: openFavorites },
+    { label: 'Buscar', act: openSearch },
+    { label: 'Música', act: () => push(musicMenu()) },
+    { label: 'Descargas', act: openDownloads },
+    { label: 'Aleatorio', act: openShuffle, noChev: true },
+    { label: 'Reproduciendo', act: () => push(new NowPlaying()) },
+    { label: 'Cola', act: openQueue },
+    { label: 'Cover Flow horizontal', act: () => { forced = 'cw'; updateMode(); }, noChev: true },
+    { label: 'Ajustes', act: () => push(settingsScreen()) }
+  ];
+  return new ListScreen('iPod', {
+    items, label: it => it.label, chevron: it => !it.noChev,
+    onSelect: it => it.act()
+  });
+}
+
+/* ================= Modo horizontal ================= */
+const land = { albums: null, i: 0, ready: false, loading: false, els: new Map(), panelAlbum: null, panelTracks: [] };
+let forced = null; // 'cw' | 'ccw' | null  (giro manual si el iPhone tiene bloqueado el giro)
+let landMode = null;
+const mqLand = window.matchMedia('(orientation: landscape)');
+
+function updateMode() {
+  const natural = mqLand.matches;
+  const useForced = forced && !natural ? forced : null;
+  const on = natural || !!useForced;
+  const h = document.documentElement;
+  h.classList.toggle('land', on);
+  h.classList.toggle('forced', !!useForced);
+  landMode = useForced;
+  closeSheet();
+  if (on) { layoutForced(useForced); landShow(); fitLand(); }
+  else { const s = cur(); if (s && s.draw && !(s instanceof CoverFlow)) s.draw(); }
+}
+function layoutForced(mode) {
+  const s = $('#land-in').style, W = window.innerWidth, H = window.innerHeight;
+  s.transformOrigin = '0 0';
+  if (mode === 'cw') { s.width = H + 'px'; s.height = W + 'px'; s.left = W + 'px'; s.top = '0px'; s.transform = 'rotate(90deg)'; }
+  else if (mode === 'ccw') { s.width = H + 'px'; s.height = W + 'px'; s.left = '0px'; s.top = H + 'px'; s.transform = 'rotate(-90deg)'; }
+  else { s.width = '100%'; s.height = '100%'; s.left = '0px'; s.top = '0px'; s.transform = 'none'; }
+}
+// Tamaños en función del espacio real disponible (se recalcula solo cuando cambia)
+function fitLand() {
+  const box = $('#land-in'), stage = $('.l-stage');
+  const w = box.clientWidth, h = box.clientHeight;
+  if (!w || !h) return;
+  box.style.fontSize = Math.min(h / 22, w / 46) + 'px';
+  const sw = stage.clientWidth, sh = stage.clientHeight;
+  if (sw && sh) {
+    const cs = Math.max(48, Math.min(sh * 0.54, sw * 0.3));
+    box.style.setProperty('--cs', cs + 'px');
+    stage.style.perspective = (cs * 5.5) + 'px';
+  }
+}
+if (window.ResizeObserver) {
+  const ro = new ResizeObserver(() => fitLand());
+  ro.observe($('#land-in')); ro.observe($('.l-stage'));
+}
+function toContent(dx, dy) {
+  if (landMode === 'cw') return [dy, -dx];
+  if (landMode === 'ccw') return [-dy, dx];
+  return [dx, dy];
+}
+const uPx = () => parseFloat(getComputedStyle($('#land-in')).fontSize) || 16;
+
+async function landShow() {
+  if (land.ready) { landDraw(); updateLandBar(); return; }
+  if (land.loading) return;
+  if (!cfg.token) { $('.l-info b').textContent = 'Falta la conexión con Plex'; $('.l-info span').textContent = 'Vuelve a vertical y entra en Ajustes'; return; }
+  land.loading = true;
+  $('.l-info b').textContent = 'Cargando…'; $('.l-info span').textContent = '';
+  try {
+    land.albums = await loadAlbums();
+    if (!land.albums.length) throw new Error('No hay álbumes en tu biblioteca.');
+    land.i = clamp(state.cfIndex || 0, 0, land.albums.length - 1);
+    land.ready = true;
+    land.els.forEach(el => el.remove()); land.els.clear();
+    landDraw(); updateLandBar();
+  } catch (e) {
+    $('.l-info b').textContent = 'No se pudo cargar'; $('.l-info span').textContent = e.message;
+  } finally { land.loading = false; }
+}
+function lfTransform(o) {
+  if (o === 0) return 'translate3d(0,0,calc(var(--cs)*.5)) rotateY(0deg)';
+  const s = Math.sign(o), a = Math.abs(o);
+  return 'translate3d(calc(var(--cs)*' + (s * (0.78 + (a - 1) * 0.24)).toFixed(3) + '),0,0) rotateY(' + (-s * 60) + 'deg)';
+}
+function landMake(k) {
+  const a = land.albums[k];
+  const el = document.createElement('div');
+  el.className = 'l-cover';
+  el.dataset.act = 'cover'; el.dataset.k = String(k);
+  if (!a.thumb) { el.classList.add('ph'); el.textContent = '♪'; return el; }
+  const img = new Image();
+  img.draggable = false;
+  img.src = art(a.thumb, 400);
+  let tried = false;
+  img.onerror = () => {
+    if (!tried) { tried = true; img.src = artDirect(a.thumb); }
+    else { img.remove(); el.classList.add('ph'); el.textContent = '♪'; }
+  };
+  el.appendChild(img);
+  return el;
+}
+function landPlace(el, o) {
+  el.style.transform = lfTransform(o);
+  el.style.zIndex = String(100 - Math.abs(o));
+  el.style.opacity = Math.abs(o) > 8 ? '0' : '1';
+}
+function landDraw() {
+  const stage = $('.l-stage');
+  if (!land.ready || !stage) return;
+  const lo = Math.max(0, land.i - 10), hi = Math.min(land.albums.length - 1, land.i + 10);
+  for (const [k, el] of Array.from(land.els.entries())) if (k < lo || k > hi) { el.remove(); land.els.delete(k); }
+  for (let k = lo; k <= hi; k++) {
+    let el = land.els.get(k);
+    if (!el) {
+      el = landMake(k);
+      el.style.transition = 'none';
+      landPlace(el, k - land.i);
+      stage.appendChild(el);
+      land.els.set(k, el);
+      void el.offsetWidth;
+      el.style.transition = '';
+    }
+    landPlace(el, k - land.i);
+  }
+  const a = land.albums[land.i];
+  $('.l-info b').textContent = a ? a.title : '';
+  $('.l-info span').textContent = a ? (a.parentTitle || '') + (a.year ? ' · ' + a.year : '') : '';
+}
+function landScroll(d) {
+  if (!land.ready) return;
+  const n = clamp(land.i + d, 0, land.albums.length - 1);
+  if (n === land.i) return;
+  land.i = n; state.cfIndex = n;
+  haptic();
+  landDraw();
+}
+async function landOpenPanel() {
+  const a = land.albums[land.i];
+  if (!a) return;
+  land.panelAlbum = a;
+  $('#lp-title').textContent = a.title;
+  $('#lp-sub').textContent = a.parentTitle || '';
+  const box = $('#lp-art');
+  box.innerHTML = '';
+  if (a.thumb) {
+    const img = new Image();
+    img.src = art(a.thumb, 400);
+    img.onerror = () => { img.onerror = null; img.src = artDirect(a.thumb); };
+    box.appendChild(img);
+  } else box.textContent = '♪';
+  $('#lp-list').innerHTML = '<div class="lp-msg">Cargando…</div>';
+  $('#l-panel').classList.add('open');
+  try {
+    const tracks = await loadTracks(a.ratingKey);
+    if (land.panelAlbum !== a) return;
+    land.panelTracks = tracks;
+    landDrawPanel();
+  } catch (e) { $('#lp-list').innerHTML = '<div class="lp-msg">' + esc(e.message) + '</div>'; }
+}
+function landDrawPanel() {
+  const c = currentTrack();
+  $('#lp-list').innerHTML = land.panelTracks.map((t, i) =>
+    '<div class="lp-row' + (c && c.id === t.id ? ' now' : '') + '" data-act="play-track" data-i="' + i + '">' +
+    '<span class="n">' + (i + 1) + '</span><span class="t">' + esc(t.title) + '</span><span class="d">' + fmt(t.dur) + '</span>' +
+    '<span class="heart' + (isLiked(t) ? ' on' : '') + '" data-act="heart" data-i="' + i + '">' + HEART_SVG + '</span>' +
+    '<span class="mo" data-act="more" data-i="' + i + '">⋯</span></div>').join('');
+}
+function updateLandBar() {
+  const t = currentTrack();
+  const nt = $('.l-nt'); if (!nt) return;
+  nt.textContent = t ? t.title : 'Nada en reproducción';
+  $('.l-na').textContent = t ? t.artist : 'Toca una portada para elegir un álbum';
+  $('[data-act=play]').innerHTML = audio.paused ? PLAY_SVG : PAUSE_SVG;
+  const hh = $('[data-act=heart-now]');
+  hh.innerHTML = HEART_SVG;
+  hh.classList.toggle('on', isLiked(t));
+  hh.style.visibility = t ? 'visible' : 'hidden';
+}
+function landTick() {
+  const f = $('.l-fill');
+  if (!f || !document.documentElement.classList.contains('land')) return;
+  const t = currentTrack();
+  const d = (isFinite(audio.duration) && audio.duration > 0) ? audio.duration : (t ? t.dur : 0);
+  f.style.width = d ? Math.min(100, (audio.currentTime || 0) / d * 100) + '%' : '0';
+}
+function doAct(el) {
+  const a = el.dataset.act;
+  if (a === 'cover') {
+    const k = +el.dataset.k;
+    if (k === land.i) landOpenPanel();
+    else { land.i = k; state.cfIndex = k; haptic(); landDraw(); }
+  }
+  else if (a === 'prev') prevTrack();
+  else if (a === 'next') nextTrack();
+  else if (a === 'play') togglePlay();
+  else if (a === 'heart-now') toggleHeart(currentTrack());
+  else if (a === 'more-now') { const t = currentTrack(); if (t) openTrackOptions(t, null); else flash('No hay nada sonando'); }
+  else if (a === 'panel-close') $('#l-panel').classList.remove('open');
+  else if (a === 'play-track') { const i = +el.dataset.i; if (land.panelTracks[i]) { playQueue(land.panelTracks, i); landDrawPanel(); } }
+  else if (a === 'heart') { const t = land.panelTracks[+el.dataset.i]; if (t) toggleHeart(t); }
+  else if (a === 'more') { const t = land.panelTracks[+el.dataset.i]; if (t) openTrackOptions(t, land.panelTracks.slice()); }
+  else if (a === 'l-exit') { forced = null; updateMode(); }
+  else if (a === 'l-flip') { forced = forced === 'cw' ? 'ccw' : 'cw'; updateMode(); }
+}
+
+// Gestos en horizontal: deslizar para pasar portadas, desplazar listas y toques
+const landIn = $('#land-in');
+let g = null;
+landIn.addEventListener('pointerdown', e => {
+  const panelOpen = $('#l-panel').classList.contains('open');
+  const sheetOpen = !!sheet.el;
+  g = { lx: e.clientX, ly: e.clientY, t: performance.now(), act: e.target.closest('[data-act],[data-sheet]'), moved: 0, acc: 0,
+    stage: !panelOpen && !sheetOpen && !!e.target.closest('.l-stage'),
+    list: sheetOpen ? e.target.closest('.sheet-list') : (panelOpen ? e.target.closest('#lp-list') : null) };
+  try { landIn.setPointerCapture(e.pointerId); } catch (err) {}
+});
+landIn.addEventListener('pointermove', e => {
+  if (!g) return;
+  const c = toContent(e.clientX - g.lx, e.clientY - g.ly);
+  g.lx = e.clientX; g.ly = e.clientY;
+  g.moved += Math.hypot(c[0], c[1]);
+  if (g.stage) {
+    g.acc += c[0];
+    const step = Math.max(24, $('.l-cover') ? parseFloat(getComputedStyle($('#land-in')).getPropertyValue('--cs')) * 0.28 : uPx() * 3);
+    while (g.acc > step) { g.acc -= step; landScroll(-1); }
+    while (g.acc < -step) { g.acc += step; landScroll(1); }
+  } else if (g.list) {
+    g.list.scrollTop -= c[1];
+  }
+});
+function landUp(e) {
+  if (!g) return;
+  const d = g; g = null;
+  if (e.type === 'pointercancel') return;
+  if (d.moved < 10 && performance.now() - d.t < 700 && d.act) {
+    if (d.act.dataset.sheet != null) sheetTap(d.act.dataset.sheet);
+    else doAct(d.act);
+  }
+}
+landIn.addEventListener('pointerup', landUp);
+landIn.addEventListener('pointercancel', landUp);
+
+/* ================= Formulario de conexión ================= */
+function openForm(msg) {
+  $('#f-base').value = cfg.base;
+  $('#f-remote').value = cfg.remote || '';
+  $('#f-token').value = cfg.token;
+  $('#f-lib').value = cfg.section;
+  const r = $('#f-res');
+  r.className = 'res'; r.textContent = msg || '';
+  $('#form').classList.add('open');
+}
+$('#f-cancel').addEventListener('click', () => $('#form').classList.remove('open'));
+$('#f-save').addEventListener('click', async () => {
+  cfg.base = normBase($('#f-base').value) || DEFAULTS.base;
+  cfg.remote = normBase($('#f-remote').value);
+  cfg.token = $('#f-token').value.trim();
+  cfg.section = $('#f-lib').value.trim();
+  const r = $('#f-res');
+  r.className = 'res'; r.textContent = 'Buscando tu servidor…';
+  state.section = null; state.albums = null; state.artists = null; state.loved = undefined; state.cfIndex = 0; land.ready = false;
+  try {
+    if (!cfg.token) throw new Error('Falta el token de Plex.');
+    await resolveConnection(true);
+    updateNet();
+    if (!conn.base) {
+      try { await plex('/library/sections'); conn.base = normBase(cfg.base); conn.rank = 0; }
+      catch (e) {
+        throw new Error(e.message === NO_SERVER
+          ? 'No consigo llegar al servidor con esas direcciones.' + (pageIsHttps() ? ' Esta página va por https, así que solo valen direcciones https o la detección automática de tu cuenta de Plex.' : '')
+          : e.message);
+      }
+    }
+    const mc = await plex('/library/sections');
+    const music = (mc.Directory || []).filter(d => d.type === 'artist');
+    if (!music.length) throw new Error('Conecta, pero no veo ninguna biblioteca de música.');
+    saveCfg();
+    r.className = 'res ok';
+    r.textContent = 'Conectado (' + connLabel() + '). Biblioteca: ' + music.map(d => d.title).join(', ');
+    setTimeout(() => $('#form').classList.remove('open'), 1300);
+  } catch (e) {
+    r.className = 'res err';
+    r.textContent = e.message;
+  }
+});
+
+/* ================= Rueda táctil (vertical) ================= */
+const wheel = $('#wheel'), center = $('#center');
+let drag = null;
+function press(kind) {
+  if (sheet.el) { if (kind === 'menu') closeSheet(); return; }
+  haptic();
+  if (kind === 'menu') pop();
+  else if (kind === 'select') cur().select();
+  else if (kind === 'play') togglePlay();
+  else if (kind === 'next') nextTrack();
+  else if (kind === 'prev') prevTrack();
+}
+function scrollCur(d) { if (sheet.el) return; const s = cur(); if (s && s.scroll) s.scroll(d); }
+wheel.addEventListener('pointerdown', e => {
+  ensureAudio();
+  try { wheel.setPointerCapture(e.pointerId); } catch (err) {}
+  const r = wheel.getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const dx = e.clientX - cx, dy = e.clientY - cy;
+  const a = Math.atan2(dy, dx);
+  const isCenter = Math.hypot(dx, dy) / (r.width / 2) < 0.42;
+  drag = { cx, cy, a, startA: a, acc: 0, moved: 0, t: performance.now(), center: isCenter };
+  if (isCenter) center.classList.add('down');
+});
+wheel.addEventListener('pointermove', e => {
+  if (!drag || drag.center) return;
+  const a = Math.atan2(e.clientY - drag.cy, e.clientX - drag.cx);
+  let d = a - drag.a;
+  if (d > Math.PI) d -= 2 * Math.PI;
+  if (d < -Math.PI) d += 2 * Math.PI;
+  drag.a = a;
+  drag.acc += d;
+  drag.moved += Math.abs(d);
+  const s = cur();
+  const step = (s && s.step) || 0.35;
+  while (drag.acc > step) { drag.acc -= step; scrollCur(1); }
+  while (drag.acc < -step) { drag.acc += step; scrollCur(-1); }
+});
+function endDrag(e) {
+  center.classList.remove('down');
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (e.type === 'pointercancel') return;
+  const dt = performance.now() - d.t;
+  if (d.moved < 0.28 && dt < 700) {
+    if (d.center) press('select');
+    else {
+      const deg = d.startA * 180 / Math.PI;
+      if (deg > -135 && deg <= -45) press('menu');
+      else if (deg > -45 && deg <= 45) press('next');
+      else if (deg > 45 && deg <= 135) press('play');
+      else press('prev');
+    }
+  }
+}
+wheel.addEventListener('pointerup', endDrag);
+wheel.addEventListener('pointercancel', endDrag);
+wheel.addEventListener('contextmenu', e => e.preventDefault());
+
+/* Toques en la pantalla vertical: corazón, ⋯, aleatorio/repetir, hoja de opciones y pulsación larga */
+let clickBlockUntil = 0;
+$('#screen').addEventListener('click', e => {
+  if (Date.now() < clickBlockUntil) return;
+  const sh = e.target.closest('[data-sheet]');
+  if (sh) { sheetTap(sh.dataset.sheet); return; }
+  const np = e.target.closest('[data-np]');
+  if (np) {
+    const k = np.dataset.np;
+    if (k === 'heart') toggleHeart(currentTrack());
+    else if (k === 'shuffle') toggleShuffle();
+    else if (k === 'repeat') toggleRepeat();
+    else if (k === 'more') { const t = currentTrack(); if (t) openTrackOptions(t, null); else flash('No hay nada sonando'); }
+    return;
+  }
+  const s = cur();
+  if (!(s instanceof ListScreen)) return;
+  const more = e.target.closest('.more');
+  if (more) { const it = s.items[+more.dataset.i]; if (it && it.key) openTrackOptions(it, s.listForOptions()); return; }
+  const h = e.target.closest('.heart');
+  if (h && h.dataset.i != null) { const it = s.items[+h.dataset.i]; if (it && it.key) toggleHeart(it); }
+});
+let lp = null;
+$('#body').addEventListener('pointerdown', e => {
+  const s = cur();
+  const row = e.target.closest('.row');
+  if (!row || !(s instanceof ListScreen) || !s.tracks) return;
+  const idx = s.top + Array.prototype.indexOf.call(row.parentNode.children, row);
+  lp = { x: e.clientX, y: e.clientY, timer: setTimeout(() => {
+    const it = s.items[idx];
+    if (it && it.key) { clickBlockUntil = Date.now() + 600; s.sel = idx; s.draw(); haptic(); openTrackOptions(it, s.listForOptions()); }
+  }, 550) };
+});
+$('#body').addEventListener('pointermove', e => { if (lp && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) { clearTimeout(lp.timer); lp = null; } });
+['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => $('#body').addEventListener(ev, () => { if (lp) { clearTimeout(lp.timer); lp = null; } }));
+
+// Evita que la página se mueva al arrastrar (salvo formularios y listas con desplazamiento)
+document.addEventListener('touchmove', e => { if (!e.target.closest('#form,#prompt,.sheet-list,#lp-list')) e.preventDefault(); }, { passive: false });
+
+// Teclado (para probar en el Mac)
+document.addEventListener('keydown', e => {
+  if ($('#form').classList.contains('open') || $('#prompt').classList.contains('open')) return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowRight') scrollCur(1);
+  else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') scrollCur(-1);
+  else if (e.key === 'Enter') press('select');
+  else if (e.key === 'Escape' || e.key === 'Backspace') press('menu');
+  else if (e.key === ' ') { e.preventDefault(); press('play'); }
+  else if (e.key === 'n') press('next');
+  else if (e.key === 'p') press('prev');
+  else if (e.key === 'h') toggleHeart(currentTrack());
+});
+
+/* ================= Arranque ================= */
+applyTheme();
+push(mainMenu());
+updateLandBar();
+updateIndicators();
+resolveConnection().then(updateNet).catch(() => {});
+if (!cfg.token) openForm('Para empezar, pega tu token de Plex. Si tu servidor está en otro equipo, cambia también la dirección.');
+let rzTimer = null;
+function onResize() { updateMode(); clearTimeout(rzTimer); rzTimer = setTimeout(updateMode, 300); }
+window.addEventListener('resize', onResize);
+window.addEventListener('orientationchange', onResize);
+if (mqLand.addEventListener) mqLand.addEventListener('change', onResize);
+updateMode();
+</script>
+</body>
+</html>
