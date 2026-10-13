@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="iPod">
-<meta name="theme-color" content="#f7f8fa">
+<meta name="theme-color" content="#000000">
 <title>iPod</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -428,15 +428,7 @@ cfg.norm = false; // opción retirada: sin normalización de volumen
 function saveCfg() { try { localStorage.setItem('ipodcfg', JSON.stringify(cfg)); } catch (e) {} }
 function applyTheme() { document.documentElement.dataset.theme = cfg.theme; }
 function applySize() { document.documentElement.dataset.size = cfg.size || 'med'; }
-function applyLook() {
-  applyTheme(); applySize();
-  // Pinta también la barra de estado del móvil con el color del iPod.
-  try {
-    const c = getComputedStyle(document.documentElement).getPropertyValue('--body1').trim();
-    const m = document.querySelector('meta[name="theme-color"]');
-    if (m && c) m.setAttribute('content', c);
-  } catch (e) {}
-}
+function applyLook() { applyTheme(); applySize(); }
 function themeLabel(v) { const t = THEMES.find(x => x[0] === v); return t ? t[1] : 'Blanco'; }
 function sizeLabel(v) { const t = SIZES.find(x => x[0] === v); return t ? t[1] : 'Mediano'; }
 const state = { section: null, albums: null, artists: null, cfIndex: 0, loved: undefined };
