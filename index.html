@@ -423,9 +423,10 @@ const SEARCH_SVG = '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.4
 /* ================= Configuración ================= */
 const THEMES = [['white', 'Blanco'], ['black', 'Negro'], ['grafito', 'Grafito'], ['azul', 'Azul'], ['rojo', 'Rojo'], ['verde', 'Verde'], ['morado', 'Morado'], ['naranja', 'Naranja']];
 const SIZES = [['small', 'Pequeño'], ['med', 'Mediano'], ['big', 'Grande']];
-const DEFAULTS = { base: 'http://192.168.1.158:32400', remote: '', token: '', section: '', theme: 'white', size: 'med', vib: true, sound: true, eq: 'off', fade: 0, viz: true, ultra: true, resume: true };
+const DEFAULTS = { base: 'http://192.168.1.158:32400', remote: '', token: '', stoken: '', section: '', theme: 'white', size: 'med', vib: true, sound: true, eq: 'off', fade: 0, viz: true, ultra: true, resume: true };
 const cfg = Object.assign({}, DEFAULTS);
 try { Object.assign(cfg, JSON.parse(localStorage.getItem('ipodcfg') || '{}')); } catch (e) {}
+if (cfg.stoken == null) cfg.stoken = '';
 if (cfg.fade == null) cfg.fade = 0;
 if (cfg.eq == null) cfg.eq = 'off';
 if (cfg.viz == null) cfg.viz = true;
@@ -442,7 +443,11 @@ let clientId = '';
 try { clientId = localStorage.getItem('ipodcid') || ''; if (!clientId) { clientId = 'ipod-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('ipodcid', clientId); } } catch (e) { clientId = 'ipod-web'; }
 
 /* ================= Conexión con Plex: casa, fuera de casa y relé ================= */
-const conn = { base: null, rank: 0, tried: false, machineId: null, checkedAt: 0 };
+const conn = { base: null, rank: 0, tried: false, machineId: null, checkedAt: 0, token: null };
+// Token para hablar con el servidor. No siempre sirve el token de la cuenta: cuando
+// el servidor es de otra persona (biblioteca compartida) hay que usar el token que
+// plex.tv da para ESE servidor (campo accessToken de /api/v2/resources).
+function authToken() { return conn.token || cfg.stoken || cfg.token; }
 const pageIsHttps = () => location.protocol === 'https:';
 function normBase(b) {
   b = (b || '').trim();
@@ -468,7 +473,7 @@ function connLabel() {
 // el token falla, y false si no se llega. Antes un 401 se daba por bueno como
 // conexión, lo que podía dejar elegido un servidor al que el token no sirve.
 async function ping(uri) {
-  const tok = encodeURIComponent(cfg.token || '');
+  const tok = encodeURIComponent(authToken() || '');
   const paths = ['/identity?X-Plex-Token=' + tok, '/library/sections?X-Plex-Token=' + tok];
   let auth = false;
   for (let i = 0; i < paths.length; i++) {
@@ -488,24 +493,33 @@ async function ping(uri) {
   return auth ? 'auth' : false;
 }
 async function discoverConnections() {
-  if (!cfg.token) return [];
+  const empty = { cands: [], token: '', machineId: null, name: '' };
+  if (!cfg.token) return empty;
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), 4500);
   try {
     const u = 'https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1&X-Plex-Token=' + encodeURIComponent(cfg.token) +
       '&X-Plex-Client-Identifier=' + encodeURIComponent(clientId) + '&X-Plex-Product=iPodPlex';
     const r = await fetch(u, { signal: ctl.signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-    if (!r.ok) return [];
+    if (!r.ok) return empty;
     const list = await r.json();
     const servers = (Array.isArray(list) ? list : []).filter(d => (d.provides || '').split(',').indexOf('server') !== -1);
-    if (!servers.length) return [];
+    if (!servers.length) return empty;
     // Si ya sabemos el identificador de máquina, elegimos ese servidor; si no,
-    // el primero propio. Antes se cogía siempre un único servidor.
+    // el primero propio y, si no tenemos ninguno (usuario con biblioteca compartida),
+    // el primer servidor que nos hayan compartido.
     const owned = servers.filter(d => d.owned);
+    const shared = servers.filter(d => !d.owned);
     const pick = (conn.machineId && servers.find(d => d.clientIdentifier === conn.machineId)) ||
-      owned[0] || servers[0];
-    return (pick.connections || []).map(c => ({ uri: String(c.uri || '').replace(/\/+$/, ''), rank: c.relay ? 3 : c.local ? 0 : 1 })).filter(c => c.uri);
-  } catch (e) { return []; } finally { clearTimeout(t); }
+      owned[0] || shared[0] || servers[0];
+    // Cada servidor trae su propio token de acceso: es el que vale para un servidor
+    // compartido (el token de la cuenta no sirve para acceder a él).
+    const token = pick.accessToken || cfg.token;
+    const cands = (pick.connections || [])
+      .map(c => ({ uri: String(c.uri || '').replace(/\/+$/, ''), rank: c.relay ? 3 : c.local ? 0 : 1 }))
+      .filter(c => c.uri);
+    return { cands: cands, token: token, machineId: pick.clientIdentifier || null, name: pick.name || '' };
+  } catch (e) { return empty; } finally { clearTimeout(t); }
 }
 let resolving = null;
 function resolveConnection(force) {
@@ -517,7 +531,9 @@ function resolveConnection(force) {
     add(normBase(cfg.remote), 1);
     if (cfg.last) add(cfg.last, 1); // la última que funcionó, para ir directo fuera de casa
     const disc = await discoverConnections();
-    disc.forEach(c => add(c.uri, c.rank));
+    // El token del servidor compartido hay que fijarlo ANTES de probar las direcciones.
+    if (disc.token) { conn.token = disc.token; if (disc.machineId) conn.machineId = disc.machineId; }
+    disc.cands.forEach(c => add(c.uri, c.rank));
     let best = null, authBest = null;
     await new Promise(done => {
       let pending = cands.size, timer = null;
@@ -542,7 +558,7 @@ function resolveConnection(force) {
     const chosen = best || authBest;
     conn.base = chosen ? chosen.uri : null;
     conn.rank = chosen ? chosen.rank : 0;
-    if (chosen) { cfg.last = chosen.uri; saveCfg(); }
+    if (chosen) { cfg.last = chosen.uri; if (conn.token) cfg.stoken = conn.token; saveCfg(); }
     conn.tried = true;
     conn.checkedAt = Date.now();
     updateNet();
@@ -559,7 +575,7 @@ document.addEventListener('visibilitychange', () => {
 function plexUrl(path, params) {
   const u = new URL(baseUrl() + path);
   Object.entries(params || {}).forEach(([k, v]) => u.searchParams.set(k, v));
-  u.searchParams.set('X-Plex-Token', cfg.token);
+  u.searchParams.set('X-Plex-Token', authToken());
   return u.toString();
 }
 const NO_SERVER = 'No llego a tu servidor ni en casa ni fuera. Comprueba que el PC y Plex estén encendidos.';
@@ -603,10 +619,10 @@ function art(thumb, w) {
   if (!thumb || !b) return '';
   w = w || 300;
   return b + '/photo/:/transcode?width=' + w + '&height=' + w + '&minSize=1&upscale=0&url=' +
-    encodeURIComponent(thumb) + '&X-Plex-Token=' + encodeURIComponent(cfg.token);
+    encodeURIComponent(thumb) + '&X-Plex-Token=' + encodeURIComponent(authToken());
 }
-function artDirect(thumb) { const b = baseUrl(); return (thumb && b) ? b + thumb + '?X-Plex-Token=' + encodeURIComponent(cfg.token) : ''; }
-function trackUrl(t) { const b = baseUrl(); return b ? b + t.key + '?X-Plex-Token=' + encodeURIComponent(cfg.token) : ''; }
+function artDirect(thumb) { const b = baseUrl(); return (thumb && b) ? b + thumb + '?X-Plex-Token=' + encodeURIComponent(authToken()) : ''; }
+function trackUrl(t) { const b = baseUrl(); return b ? b + t.key + '?X-Plex-Token=' + encodeURIComponent(authToken()) : ''; }
 // Precarga de miniaturas: así, al hacer scroll, la imagen ya está en caché y no parpadea.
 const thumbPre = new Map();
 function warmThumb(url) {
@@ -834,7 +850,7 @@ async function downloadTrack(t, prefix) {
   try { if (navigator.storage && navigator.storage.persist) { const p = navigator.storage.persist(); if (p && p.catch) p.catch(() => {}); } } catch (e) {}
   const pre = prefix || 'Descargando';
   setStatus(pre + '…');
-  const audioBlob = await fetchBlob(baseUrl() + t.key + '?download=1&X-Plex-Token=' + encodeURIComponent(cfg.token), (p, got) => {
+  const audioBlob = await fetchBlob(baseUrl() + t.key + '?download=1&X-Plex-Token=' + encodeURIComponent(authToken()), (p, got) => {
     setStatus(pre + '… ' + (p != null ? Math.round(p * 100) + '%' : (got / 1048576).toFixed(1) + ' MB'));
   });
   let artBlob = null;
@@ -879,7 +895,7 @@ async function saveToFiles(t) {
     if (offIds.has(t.id)) { const rec = await idbRun(['blob'], 'readonly', b => b.get(t.id)); if (rec && rec.audio) blob = rec.audio; }
     if (!blob) {
       setStatus('Preparando…');
-      blob = await fetchBlob(baseUrl() + t.key + '?download=1&X-Plex-Token=' + encodeURIComponent(cfg.token), p => { if (p != null) setStatus('Preparando… ' + Math.round(p * 100) + '%'); });
+      blob = await fetchBlob(baseUrl() + t.key + '?download=1&X-Plex-Token=' + encodeURIComponent(authToken()), p => { if (p != null) setStatus('Preparando… ' + Math.round(p * 100) + '%'); });
     }
     clearStatus();
     const ext = (String(t.key).split('?')[0].split('.').pop() || 'mp3').toLowerCase();
@@ -2847,7 +2863,11 @@ $('#f-cancel').addEventListener('click', () => $('#form').classList.remove('open
 $('#f-save').addEventListener('click', async () => {
   cfg.base = normBase($('#f-base').value) || DEFAULTS.base;
   cfg.remote = normBase($('#f-remote').value);
-  cfg.token = $('#f-token').value.trim();
+  const newToken = $('#f-token').value.trim();
+  // Si cambia el token de la cuenta, el token guardado del servidor (de otro dueño,
+  // p. ej. una biblioteca compartida) deja de valer: hay que volver a descubrirlo.
+  if (newToken !== cfg.token) { conn.token = null; cfg.stoken = ''; conn.machineId = null; }
+  cfg.token = newToken;
   cfg.section = $('#f-lib').value.trim();
   const r = $('#f-res');
   r.className = 'res'; r.textContent = 'Buscando tu servidor…';
