@@ -310,6 +310,10 @@ html.forced .l-btn{visibility:visible}
 #form .srv{display:flex;align-items:center;gap:9px;font-size:15px;color:#eceef2;margin:0;padding:10px 12px;border:1px solid #3a3d44;border-radius:10px;background:#0f1012}
 #form .srv input{width:auto;margin:0;padding:0;flex:none}
 #form .srv span{flex:1}
+#form .linkbtn{display:block;margin:14px 0 0;padding:0;background:none;border:0;color:var(--accent);font-size:14px;font-weight:600;text-align:left}
+#form .adv{display:none;margin-top:6px;padding:0 12px 4px;border-left:2px solid #2c2e33}
+#form .adv.open{display:block}
+#form .adv .hint{font-size:12px;color:#8a8e97;margin:8px 0 2px;line-height:1.35}
 </style>
 </head>
 <body>
@@ -377,18 +381,22 @@ html.forced .l-btn{visibility:visible}
 
 <div id="form">
   <div class="card">
-    <h2>Conexión con Plex</h2>
-    <p>Estos datos se guardan solo en este iPhone.</p>
-    <label for="f-base">Dirección en casa</label>
-    <input id="f-base" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="http://192.168.1.158:32400">
-    <label for="f-remote">Dirección fuera de casa (opcional)</label>
-    <input id="f-remote" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Por ejemplo la de Tailscale: http://100.x.x.x:32400">
+    <h2>Conectar con Plex</h2>
+    <p>Solo necesitas tu token. La app encuentra el servidor sola.</p>
     <label for="f-token">Tu token de Plex (el de tu propia cuenta)</label>
     <input id="f-token" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Pega aquí tu token, no el del dueño">
     <label>Servidor de música</label>
     <div class="servers" id="f-servers"></div>
     <label for="f-lib">Biblioteca de música (opcional)</label>
     <input id="f-lib" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Si lo dejas vacío, uso la primera">
+    <button id="f-adv-toggle" type="button" class="linkbtn">Opciones avanzadas</button>
+    <div id="f-adv" class="adv">
+      <p class="hint">Normalmente no hace falta: la app detecta las direcciones sola. Rellénalo solo si la detección falla (por ejemplo, con Tailscale).</p>
+      <label for="f-base">Dirección del servidor en casa (opcional)</label>
+      <input id="f-base" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="http://ip-del-servidor:32400">
+      <label for="f-remote">Dirección fuera de casa (opcional)</label>
+      <input id="f-remote" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Por ejemplo la de Tailscale: http://100.x.x.x:32400">
+    </div>
     <div class="res" id="f-res"></div>
     <div class="btns">
       <button id="f-cancel" type="button">Cerrar</button>
@@ -430,7 +438,7 @@ const SEARCH_SVG = '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.4
 /* ================= Configuración ================= */
 const THEMES = [['white', 'Blanco'], ['black', 'Negro'], ['grafito', 'Grafito'], ['azul', 'Azul'], ['rojo', 'Rojo'], ['verde', 'Verde'], ['morado', 'Morado'], ['naranja', 'Naranja']];
 const SIZES = [['small', 'Pequeño'], ['med', 'Mediano'], ['big', 'Grande']];
-const DEFAULTS = { base: 'http://192.168.1.158:32400', remote: '', token: '', stoken: '', smachine: '', section: '', theme: 'white', size: 'med', vib: true, sound: true, eq: 'off', fade: 0, viz: true, ultra: true, resume: true };
+const DEFAULTS = { base: '', remote: '', token: '', stoken: '', smachine: '', section: '', theme: 'white', size: 'med', vib: true, sound: true, eq: 'off', fade: 0, viz: true, ultra: true, resume: true };
 const cfg = Object.assign({}, DEFAULTS);
 try { Object.assign(cfg, JSON.parse(localStorage.getItem('ipodcfg') || '{}')); } catch (e) {}
 if (cfg.stoken == null) cfg.stoken = '';
@@ -614,7 +622,9 @@ document.addEventListener('visibilitychange', () => {
 
 /* ================= Cliente de Plex ================= */
 function plexUrl(path, params) {
-  const u = new URL(baseUrl() + path);
+  const b = baseUrl();
+  if (!b) throw new Error(NO_SERVER);
+  const u = new URL(b + path);
   Object.entries(params || {}).forEach(([k, v]) => u.searchParams.set(k, v));
   u.searchParams.set('X-Plex-Token', authToken());
   return u.toString();
@@ -2896,6 +2906,9 @@ function openForm(msg) {
   $('#f-remote').value = cfg.remote || '';
   $('#f-token').value = cfg.token;
   $('#f-lib').value = cfg.section;
+  // Mostramos las direcciones manuales solo si ya había una configurada.
+  const manual = (cfg.remote || '') || (normBase(cfg.base) && normBase(cfg.base) !== normBase(DEFAULTS.base));
+  $('#f-adv').classList.toggle('open', !!manual);
   const r = $('#f-res');
   r.className = 'res'; r.textContent = msg || '';
   $('#form').classList.add('open');
@@ -2905,6 +2918,7 @@ function openForm(msg) {
 $('#f-token').addEventListener('change', () => loadServerChoices($('#f-token').value.trim()));
 $('#f-token').addEventListener('blur', () => loadServerChoices($('#f-token').value.trim()));
 $('#f-cancel').addEventListener('click', () => $('#form').classList.remove('open'));
+$('#f-adv-toggle').addEventListener('click', () => $('#f-adv').classList.toggle('open'));
 $('#f-save').addEventListener('click', async () => {
   cfg.base = normBase($('#f-base').value) || DEFAULTS.base;
   cfg.remote = normBase($('#f-remote').value);
@@ -3090,7 +3104,7 @@ push(mainMenu());
 updateLandBar();
 updateIndicators();
 resolveConnection().then(() => { updateNet(); try { if (cfg.token) restoreSession(); } catch (e) {} }).catch(() => {});
-if (!cfg.token) openForm('Para empezar, pega tu token de Plex. Si tu servidor está en otro equipo, cambia también la dirección.');
+if (!cfg.token) openForm('Para empezar, pega tu token de Plex. La app encontrará el servidor sola.');
 let rzTimer = null;
 function onResize() { updateMode(); clearTimeout(rzTimer); rzTimer = setTimeout(updateMode, 300); }
 window.addEventListener('resize', onResize);
