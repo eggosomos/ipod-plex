@@ -78,6 +78,15 @@ html.has-bat #hd-bat{display:block}
 .row .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .row .chev{font-size:1.3em;font-weight:700;opacity:.65;margin-left:.5em;line-height:1}
 .row .more{display:inline-flex;align-items:center;justify-content:center;height:100%;padding:0 .5em;font-size:1.25em;font-weight:900;line-height:1}
+.row.has-th{padding-left:.5em}
+.row .th{flex:none;width:1.7em;height:1.7em;margin-right:.6em;border-radius:.28em;overflow:hidden;background:#d9dce2;
+  display:flex;align-items:center;justify-content:center;color:#9aa0aa;font-size:.98em;line-height:1}
+.row .th img{width:100%;height:100%;object-fit:cover;display:block}
+.row .th svg{width:1em;height:1em;fill:currentColor}
+.row.sel .th{background:rgba(255,255,255,.24);color:#fff}
+.row.shufhead{color:var(--accent)}
+.row.shufhead .th{background:rgba(0,0,0,.06);color:var(--accent)}
+.row.shufhead.sel .th{background:rgba(255,255,255,.24);color:#fff}
 .row.sel{background:linear-gradient(var(--sel1) 0%,var(--sel2) 100%);color:#fff;border-bottom-color:var(--selb)}
 .empty{padding:1.6em 1em;text-align:center;color:#555;line-height:1.4;font-weight:600}
 .empty small{display:block;margin-top:.6em;font-weight:500;color:#777;font-size:.82em}
@@ -118,6 +127,10 @@ html.has-bat #hd-bat{display:block}
 .cf-t{position:absolute;left:0;right:0;bottom:.8em;text-align:center;color:#fff;padding:0 1em}
 .cf-t b{display:block;font-size:1.1em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cf-t span{display:block;color:#a9acb3;font-size:.95em;margin-top:.2em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cf-search{position:absolute;top:.6em;right:.7em;width:2.2em;height:2.2em;display:flex;align-items:center;justify-content:center;
+  color:#fff;background:rgba(255,255,255,.16);border-radius:50%;z-index:300;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.cf-search svg{width:1.15em;height:1.15em;fill:currentColor}
+.cf-search:active{background:rgba(255,255,255,.34)}
 
 /* Reproduciendo */
 .np{position:absolute;inset:0;padding:.9em 1em .6em;display:flex;flex-direction:column;align-items:center;gap:.35em}
@@ -200,6 +213,11 @@ html.land #land{display:block}
 html.forced .l-wrap{top:0;bottom:0;left:0;right:0}
 .l-top{flex:none;height:1.9em;display:flex;align-items:center;justify-content:space-between;padding:0 1em}
 .l-title{font-weight:700;font-size:.85em;opacity:.7;letter-spacing:.04em}
+.l-tools{display:flex;align-items:center;gap:.7em}
+.l-search{display:inline-flex;align-items:center;justify-content:center;width:1.7em;height:1.7em;border-radius:50%;color:#fff;
+  background:rgba(255,255,255,.16);cursor:pointer;-webkit-tap-highlight-color:transparent}
+.l-search svg{width:1.05em;height:1.05em;fill:currentColor}
+.l-search:active{background:rgba(255,255,255,.34)}
 .l-btn{visibility:hidden;border-radius:1em;padding:.25em .8em;font-size:.8em;font-weight:700;color:#fff;background:rgba(255,255,255,.18)}
 html.forced .l-btn{visibility:visible}
 .l-stage{position:relative;flex:1 1 0;min-height:0;overflow:hidden}
@@ -249,6 +267,8 @@ html.forced .l-btn{visibility:visible}
 .lp-row .heart{height:100%;padding:0 .2em 0 .4em;color:#8a8f98}
 .lp-row .heart.on{color:#ff4d63}
 .lp-row .mo{height:100%;display:inline-flex;align-items:center;padding:0 .4em;font-weight:900;color:#8a8f98}
+.lp-row.back .t{font-weight:700;color:#6db6ff}
+.lp-row.back .n{color:#6db6ff}
 .lp-msg{padding:2em;text-align:center;color:#a9acb3}
 #land-in .sheet-card{background:#1c1d21;color:#fff}
 #land-in .sheet-list{overflow:hidden}
@@ -311,7 +331,10 @@ html.forced .l-btn{visibility:visible}
       <div class="l-top">
         <span class="l-btn" data-act="l-exit">‹ Vertical</span>
         <span class="l-title">COVER FLOW</span>
-        <span class="l-btn" data-act="l-flip">⟲ Girar</span>
+        <span class="l-tools">
+          <span class="l-search" data-act="search"><svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg></span>
+          <span class="l-btn" data-act="l-flip">⟲ Girar</span>
+        </span>
       </div>
       <div class="l-stage"></div>
       <div class="l-info"><b></b><span></span></div>
@@ -384,6 +407,7 @@ const PAUSE_SVG = '<svg viewBox="0 0 24 24"><path d="M6 4.5h4v15H6zM14 4.5h4v15h
 const SHUFFLE_SVG = '<svg viewBox="0 0 24 24"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/></svg>';
 const REPEAT_SVG = '<svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>';
 const LYRICS_SVG = '<svg viewBox="0 0 24 24"><path d="M4 5h16v2H4zM4 9h11v2H4zM4 13h16v2H4zM4 17h11v2H4z"/></svg>';
+const SEARCH_SVG = '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>';
 
 /* ================= Configuración ================= */
 const THEMES = [['white', 'Blanco'], ['black', 'Negro'], ['grafito', 'Grafito'], ['azul', 'Azul'], ['rojo', 'Rojo'], ['verde', 'Verde'], ['morado', 'Morado'], ['naranja', 'Naranja']];
@@ -567,6 +591,26 @@ function art(thumb, w) {
 }
 function artDirect(thumb) { const b = baseUrl(); return (thumb && b) ? b + thumb + '?X-Plex-Token=' + encodeURIComponent(cfg.token) : ''; }
 function trackUrl(t) { const b = baseUrl(); return b ? b + t.key + '?X-Plex-Token=' + encodeURIComponent(cfg.token) : ''; }
+// Celda de miniatura para las listas (con respaldo directo y nota musical si no hay carátula)
+function thumbCell(it) {
+  if (!it || it.head) return '';
+  const p = it.thumb || it.composite || (it.parentThumb || '');
+  if (!p) return '<span class="th ph">♪</span>';
+  const primary = art(p, 120);
+  const fb = artDirect(p);
+  return '<span class="th"><img loading="lazy" src="' + esc(primary) +
+    '" onerror="this.onerror=null;this.src=\'' + esc(fb) + '\'"></span>';
+}
+// Reproduce una lista/álbum en orden aleatorio (baraja una copia y arranca la cola)
+function shufflePlayList(tracks, title) {
+  const list = (tracks || []).filter(t => t && t.key);
+  if (!list.length) { flash('No hay canciones para mezclar'); return; }
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = a[i]; a[i] = a[j]; a[j] = x; }
+  playQueue(a, 0);
+  push(new NowPlaying());
+  flash('Aleatorio · ' + (title ? title + ' · ' : '') + a.length + ' canciones');
+}
 
 async function getSection() {
   if (state.section) return state.section;
@@ -1406,6 +1450,9 @@ class ListScreen {
     this.emptyText = o.emptyText || 'No hay nada aquí todavía.';
     this.onSelect = o.onSelect || (() => {});
     this.loader = o.loader || null;
+    this.thumb = !!o.thumb;
+    this.shuffle = o.shuffle || null;
+    this.selShuffle = false;
     this.pageSize = 100;
     this.pending = new Set();
     this.sel = 0; this.top = 0;
@@ -1413,7 +1460,9 @@ class ListScreen {
   }
   rows() {
     const fs = parseFloat(getComputedStyle($('#screen')).fontSize) || 14;
-    return Math.max(3, Math.floor($('#body').clientHeight / (fs * 2.1)));
+    let r = Math.max(3, Math.floor($('#body').clientHeight / (fs * 2.1)));
+    if (this.shuffle) r = Math.max(2, r - 1);
+    return r;
   }
   mount() { this.draw(); }
   hasChev(it) { return typeof this.chevron === 'function' ? !!this.chevron(it) : !!this.chevron; }
@@ -1432,6 +1481,10 @@ class ListScreen {
     if (!this.total) { $('#body').innerHTML = '<div class="empty">' + esc(this.emptyText) + '</div>'; return; }
     const rows = this.rows();
     let h = '';
+    if (this.shuffle) {
+      h += '<div class="row shufhead has-th' + (this.selShuffle ? ' sel' : '') + '" data-shuffle="1">' +
+        '<span class="th">' + SHUFFLE_SVG + '</span><span class="t">Aleatorio</span></div>';
+    }
     for (let k = 0; k < rows; k++) {
       const idx = this.top + k;
       if (idx >= this.total) break;
@@ -1440,15 +1493,21 @@ class ListScreen {
       const txt = it === undefined ? '…' : this.label(it);
       const chev = it !== undefined && this.hasChev(it);
       const isT = this.tracks && it !== undefined && it.key;
-      h += '<div class="row' + (idx === this.sel ? ' sel' : '') + '"><span class="t">' + esc(txt) + '</span>' +
+      const th = this.thumb && it !== undefined ? thumbCell(it) : '';
+      const selRow = idx === this.sel && !this.selShuffle;
+      h += '<div class="row' + (selRow ? ' sel' : '') + (th ? ' has-th' : '') + '">' + th + '<span class="t">' + esc(txt) + '</span>' +
         (chev ? '<span class="chev">›</span>' : '') +
-        (isT && idx === this.sel ? '<span class="more" data-i="' + idx + '">⋯</span>' : '') +
+        (isT && selRow ? '<span class="more" data-i="' + idx + '">⋯</span>' : '') +
         (isT && this.hearts ? '<span class="heart' + (isLiked(it) ? ' on' : '') + '" data-i="' + idx + '">' + HEART_SVG + '</span>' : '') + '</div>';
     }
     $('#body').innerHTML = h;
     this.ensure(this.sel + 30);
   }
   scroll(d) {
+    if (this.shuffle) {
+      if (this.selShuffle) { if (d > 0) { this.selShuffle = false; haptic(); this.draw(); } return; }
+      if (d < 0 && this.sel === 0) { this.selShuffle = true; haptic(); this.draw(); return; }
+    }
     const n = clamp(this.sel + d, 0, this.total - 1);
     if (n === this.sel) return;
     this.sel = n;
@@ -1459,6 +1518,7 @@ class ListScreen {
     this.draw();
   }
   select() {
+    if (this.shuffle && this.selShuffle) { this.selShuffle = false; shufflePlayList(this.shuffle, this.title); return; }
     const it = this.items[this.sel];
     if (it !== undefined) this.onSelect(it, this.sel, this);
   }
@@ -1476,7 +1536,8 @@ class CoverFlow {
   constructor(albums) { this.title = 'Cover Flow'; this.cls = 'cf'; this.albums = albums; this.i = state.cfIndex || 0; this.els = new Map(); this.step = 0.26; }
   mount() {
     this.i = clamp(state.cfIndex || 0, 0, this.albums.length - 1);
-    $('#body').innerHTML = '<div class="cf-stage"></div><div class="cf-t"><b></b><span></span></div>';
+    $('#body').innerHTML = '<div class="cf-stage"></div><div class="cf-t"><b></b><span></span></div>' +
+      '<div class="cf-search" data-cf="search">' + SEARCH_SVG + '</div>';
     this.stage = $('.cf-stage');
     this.els = new Map();
     this.draw();
@@ -1803,7 +1864,7 @@ function radioStep(d) {
 
 /* ================= Acciones del menú ================= */
 const trackList = (title, tracks, extra) => new ListScreen(title, Object.assign({
-  items: tracks, chevron: false, tracks: true, label: t => t.title,
+  items: tracks, chevron: false, tracks: true, thumb: true, shuffle: tracks, label: t => t.title,
   onSelect: (t, i) => { playQueue(tracks, i); push(new NowPlaying()); }
 }, extra || {}));
 
@@ -1817,17 +1878,20 @@ function openCoverFlow() {
     return new CoverFlow(albums);
   });
 }
+function openPlaylist(p) {
+  return openAsync(p.title, async () => {
+    const raw = await loadAll('/playlists/' + p.ratingKey + '/items');
+    return trackList(p.title, raw.map(norm).filter(t => t.key), { emptyText: 'Esta lista está vacía.' });
+  });
+}
 function openPlaylists() {
   openAsync('Listas', async () => {
     const mc = await plex('/playlists', { playlistType: 'audio' });
     const lists = (mc.Metadata || []).filter(p => !p.playlistType || p.playlistType === 'audio')
       .sort((a, b) => (a.title || '').localeCompare(b.title || '', 'es'));
     return new ListScreen('Listas de reproducción', {
-      items: lists, label: p => p.title, emptyText: 'No hay listas de música en tu servidor.',
-      onSelect: p => openAsync(p.title, async () => {
-        const raw = await loadAll('/playlists/' + p.ratingKey + '/items');
-        return trackList(p.title, raw.map(norm).filter(t => t.key), { emptyText: 'Esta lista está vacía.' });
-      })
+      items: lists, thumb: true, label: p => p.title, emptyText: 'No hay listas de música en tu servidor.',
+      onSelect: p => openPlaylist(p)
     });
   });
 }
@@ -1850,11 +1914,11 @@ function openArtists() {
   openAsync('Artistas', async () => {
     const artists = await loadArtists();
     return new ListScreen('Artistas', {
-      items: artists, label: a => a.title,
+      items: artists, thumb: true, label: a => a.title,
       onSelect: a => openAsync(a.title, async () => {
         const mc = await plex('/library/metadata/' + a.ratingKey + '/children');
         const albums = (mc.Metadata || []).sort((x, y) => (x.year || 0) - (y.year || 0));
-        return new ListScreen(a.title, { items: albums, label: x => x.title, onSelect: openAlbum });
+        return new ListScreen(a.title, { items: albums, thumb: true, label: x => x.title, onSelect: openAlbum });
       })
     });
   });
@@ -1862,14 +1926,14 @@ function openArtists() {
 function openAlbums() {
   openAsync('Álbumes', async () => {
     const albums = await loadAlbums();
-    return new ListScreen('Álbumes', { items: albums, label: a => a.title, onSelect: openAlbum });
+    return new ListScreen('Álbumes', { items: albums, thumb: true, label: a => a.title, onSelect: openAlbum });
   });
 }
 function openRecent() {
   openAsync('Recién añadido', async () => {
     const s = await getSection();
     const mc = await plex('/library/sections/' + s + '/albums', { sort: 'addedAt:desc', 'X-Plex-Container-Start': 0, 'X-Plex-Container-Size': 60 });
-    return new ListScreen('Recién añadido', { items: mc.Metadata || [], label: a => a.title, onSelect: openAlbum });
+    return new ListScreen('Recién añadido', { items: mc.Metadata || [], thumb: true, label: a => a.title, onSelect: openAlbum });
   });
 }
 function openSongs() {
@@ -1880,7 +1944,7 @@ function openSongs() {
     const first = await q(0, 100);
     const items = (first.Metadata || []).map(norm);
     return new ListScreen('Canciones', {
-      items, total: first.totalSize != null ? first.totalSize : items.length, chevron: false, tracks: true, label: t => t.title,
+      items, total: first.totalSize != null ? first.totalSize : items.length, chevron: false, tracks: true, thumb: true, label: t => t.title,
       loader: async (start, size) => { const mc = await q(start, size); return { items: (mc.Metadata || []).map(norm), total: mc.totalSize }; },
       onSelect: (t, i, self) => {
         const list = [];
@@ -1921,13 +1985,23 @@ function openShuffle() {
 
 /* ---- Búsqueda en toda la biblioteca de música (artistas, álbumes y canciones) ---- */
 function openSearch() {
-  askText('Buscar', 'Artista, álbum o canción…').then(q => {
+  askText('Buscar', 'Artista, álbum, canción o lista…').then(q => {
     if (!q) return;
     openAsync('Buscar', async () => {
-      const items = await searchEverything(q);
-      return searchResultsScreen(items, q);
+      const [items, lists] = await Promise.all([searchEverything(q), searchPlaylists(q)]);
+      return searchResultsScreen(items, q, lists);
     });
   });
+}
+// Las listas de reproducción no salen en /search: las pedimos aparte y filtramos por título.
+async function searchPlaylists(q) {
+  try {
+    const mc = await plex('/playlists', { playlistType: 'audio' });
+    const ql = (q || '').toLowerCase();
+    return (mc.Metadata || [])
+      .filter(p => (!p.playlistType || p.playlistType === 'audio') && (p.title || '').toLowerCase().includes(ql))
+      .slice(0, 25);
+  } catch (e) { return []; }
 }
 // Prueba varias formas de buscar por si el servidor usa una u otra API.
 async function searchEverything(q) {
@@ -1956,7 +2030,7 @@ function searchFlat(mc) {
   (mc.SearchResult || mc.Hub || []).forEach(h => (h.Metadata || []).forEach(m => out.push(m)));
   return out;
 }
-function searchResultsScreen(items, q) {
+function searchResultsScreen(items, q, lists) {
   const wanted = { artist: 1, album: 1, track: 1 };
   const groups = [['artist', 'Artistas'], ['album', 'Álbumes'], ['track', 'Canciones']];
   const rows = [];
@@ -1967,9 +2041,13 @@ function searchResultsScreen(items, q) {
     rows.push({ head: true, title: name });
     md.forEach(m => rows.push(type === 'track' ? norm(m) : m));
   });
+  if (lists && lists.length) {
+    rows.push({ head: true, title: 'Listas de reproducción' });
+    lists.forEach(p => rows.push(Object.assign({}, p, { type: 'playlist' })));
+  }
   if (!rows.length) throw new Error('Nada encontrado para «' + q + '».');
   return new ListScreen('Resultados', {
-    items: rows, tracks: true,
+    items: rows, tracks: true, thumb: true,
     chevron: it => !it.head && it.type !== 'track',
     label: it => it.head ? it.title
       : (it.type === 'artist' || it.type === 'album') ? it.title + (it.year ? ' · ' + it.year : '')
@@ -1978,6 +2056,7 @@ function searchResultsScreen(items, q) {
       if (!it || it.head) return;
       if (it.type === 'artist') openArtistFromSearch(it);
       else if (it.type === 'album') openAlbum(it);
+      else if (it.type === 'playlist') openPlaylist(it);
       else if (it.key) { playQueue([it], 0); push(new NowPlaying()); }
     }
   });
@@ -1986,14 +2065,14 @@ function openArtistFromSearch(a) {
   openAsync(a.title, async () => {
     const mc = await plex('/library/metadata/' + a.ratingKey + '/children');
     const albums = (mc.Metadata || []).sort((x, y) => (x.year || 0) - (y.year || 0));
-    return new ListScreen(a.title, { items: albums, label: x => x.title, onSelect: openAlbum });
+    return new ListScreen(a.title, { items: albums, thumb: true, label: x => x.title, onSelect: openAlbum });
   });
 }
 
 function openQueue() {
   if (!player.queue.length) { flash('La cola está vacía'); return; }
   const scr = new ListScreen('Cola', {
-    items: player.queue, chevron: false, tracks: true,
+    items: player.queue, chevron: false, tracks: true, thumb: true,
     label: t => (t === currentTrack() ? '▶ ' : '') + t.title,
     onSelect: (t, i) => { player.i = i; loadTrack(); push(new NowPlaying()); }
   });
@@ -2050,7 +2129,8 @@ function mainMenu() {
 }
 
 /* ================= Modo horizontal ================= */
-const land = { albums: null, i: 0, ready: false, loading: false, els: new Map(), panelAlbum: null, panelTracks: [] };
+const land = { albums: null, i: 0, ready: false, loading: false, els: new Map(), panelAlbum: null, panelTracks: [],
+  panelMode: 'tracks', searchRows: [], resultsFrom: false };
 let forced = null; // 'cw' | 'ccw' | null  (giro manual si el iPhone tiene bloqueado el giro)
 let landMode = null;
 const mqLand = window.matchMedia('(orientation: landscape)');
@@ -2176,6 +2256,7 @@ function landScroll(d) {
 async function landOpenPanel() {
   const a = land.albums[land.i];
   if (!a) return;
+  land.panelMode = 'tracks'; land.resultsFrom = false; land.searchRows = [];
   land.panelAlbum = a;
   $('#lp-title').textContent = a.title;
   $('#lp-sub').textContent = a.parentTitle || '';
@@ -2197,12 +2278,73 @@ async function landOpenPanel() {
   } catch (e) { $('#lp-list').innerHTML = '<div class="lp-msg">' + esc(e.message) + '</div>'; }
 }
 function landDrawPanel() {
+  if (land.panelMode === 'results') return landDrawResults();
   const c = currentTrack();
-  $('#lp-list').innerHTML = land.panelTracks.map((t, i) =>
+  let h = '';
+  if (land.resultsFrom) h += '<div class="lp-row back" data-act="lr-back"><span class="n">‹</span><span class="t">Volver a resultados</span><span class="d"></span></div>';
+  h += land.panelTracks.map((t, i) =>
     '<div class="lp-row' + (c && c.id === t.id ? ' now' : '') + '" data-act="play-track" data-i="' + i + '">' +
     '<span class="n">' + (i + 1) + '</span><span class="t">' + esc(t.title) + '</span><span class="d">' + fmt(t.dur) + '</span>' +
     '<span class="heart' + (isLiked(t) ? ' on' : '') + '" data-act="heart" data-i="' + i + '">' + HEART_SVG + '</span>' +
     '<span class="mo" data-act="more" data-i="' + i + '">⋯</span></div>').join('');
+  $('#lp-list').innerHTML = h;
+}
+function landDrawResults() {
+  const rows = land.searchRows || [];
+  if (!rows.length) { $('#lp-list').innerHTML = '<div class="lp-msg">Nada encontrado.</div>'; return; }
+  $('#lp-list').innerHTML = rows.map((r, i) =>
+    '<div class="lp-row" data-act="lr" data-i="' + i + '">' +
+    '<span class="n">' + r.glyph + '</span><span class="t">' + esc(r.title) + '</span><span class="d">' + esc(r.sub || '') + '</span></div>').join('');
+}
+async function landSearch() {
+  const q = await askText('Buscar', 'Artista, álbum, canción o lista…');
+  if (!q) return;
+  land.panelAlbum = null; land.panelTracks = []; land.searchRows = []; land.resultsFrom = false;
+  land.panelMode = 'results';
+  $('#lp-title').textContent = 'Buscar';
+  $('#lp-sub').textContent = q;
+  const box = $('#lp-art'); box.innerHTML = ''; box.textContent = '♪';
+  $('#lp-list').innerHTML = '<div class="lp-msg">Buscando…</div>';
+  $('#l-panel').classList.add('open');
+  try {
+    const [items, lists] = await Promise.all([searchEverything(q), searchPlaylists(q)]);
+    const rows = [];
+    items.filter(x => x && x.type === 'artist').slice(0, 20).forEach(m => rows.push({ glyph: '🎤', title: m.title, sub: 'Artista', type: 'artist', item: m }));
+    items.filter(x => x && x.type === 'album').slice(0, 20).forEach(m => rows.push({ glyph: '💿', title: m.title, sub: m.parentTitle || 'Álbum', type: 'album', item: m }));
+    items.filter(x => x && x.type === 'track').slice(0, 20).forEach(m => rows.push({ glyph: '♪', title: m.title, sub: m.grandparentTitle || m.parentTitle || '', type: 'track', item: m }));
+    (lists || []).forEach(p => rows.push({ glyph: '≡', title: p.title, sub: 'Lista', type: 'playlist', item: p }));
+    land.searchRows = rows;
+    $('#lp-sub').textContent = rows.length ? (rows.length + ' resultados') : q;
+    landDrawResults();
+  } catch (e) { $('#lp-list').innerHTML = '<div class="lp-msg">' + esc(e.message) + '</div>'; }
+}
+async function landOpenResult(r) {
+  if (!r) return;
+  if (r.type === 'track') {
+    const t = norm(r.item);
+    if (t.key) { playQueue([t], 0); flash('Reproduciendo: ' + t.title); }
+    return;
+  }
+  land.resultsFrom = true;
+  land.panelMode = 'tracks';
+  land.panelAlbum = r.type === 'album' ? r.item : null;
+  $('#lp-title').textContent = r.title;
+  $('#lp-sub').textContent = r.type === 'artist' ? 'Artista' : r.type === 'album' ? 'Álbum' : 'Lista';
+  const box = $('#lp-art'); box.innerHTML = '';
+  const th = r.item && (r.item.thumb || r.item.composite);
+  if (th) { const img = new Image(); img.src = art(th, 400); img.onerror = () => { img.onerror = null; img.src = artDirect(th); }; box.appendChild(img); }
+  else box.textContent = '♪';
+  $('#lp-list').innerHTML = '<div class="lp-msg">Cargando…</div>';
+  $('#l-panel').classList.add('open');
+  try {
+    let tracks = [];
+    if (r.type === 'album') tracks = await loadTracks(r.item.ratingKey);
+    else if (r.type === 'artist') { const mc = await plex('/library/metadata/' + r.item.ratingKey + '/allLeaves'); tracks = (mc.Metadata || []).map(norm).filter(t => t.key); }
+    else if (r.type === 'playlist') { const raw = await loadAll('/playlists/' + r.item.ratingKey + '/items'); tracks = raw.map(norm).filter(t => t.key); }
+    land.panelTracks = tracks;
+    if (!tracks.length) { $('#lp-list').innerHTML = '<div class="lp-msg">No hay canciones aquí.</div>'; return; }
+    landDrawPanel();
+  } catch (e) { $('#lp-list').innerHTML = '<div class="lp-msg">' + esc(e.message) + '</div>'; }
 }
 function updateLandBar() {
   const t = currentTrack();
@@ -2243,6 +2385,9 @@ function doAct(el) {
   else if (a === 'lyrics') openLyrics();
   else if (a === 'more-now') { const t = currentTrack(); if (t) openTrackOptions(t, null); else flash('No hay nada sonando'); }
   else if (a === 'panel-close') $('#l-panel').classList.remove('open');
+  else if (a === 'search') landSearch();
+  else if (a === 'lr') { const r = land.searchRows[+el.dataset.i]; if (r) landOpenResult(r); }
+  else if (a === 'lr-back') { land.panelMode = 'results'; land.resultsFrom = false; landDrawResults(); }
   else if (a === 'play-track') { const i = +el.dataset.i; if (land.panelTracks[i]) { playQueue(land.panelTracks, i); landDrawPanel(); } }
   else if (a === 'heart') { const t = land.panelTracks[+el.dataset.i]; if (t) toggleHeart(t); }
   else if (a === 'more') { const t = land.panelTracks[+el.dataset.i]; if (t) openTrackOptions(t, land.panelTracks.slice()); }
@@ -2438,6 +2583,10 @@ $('#screen').addEventListener('click', e => {
     else if (k === 'more') { const t = currentTrack(); if (t) openTrackOptions(t, null); else flash('No hay nada sonando'); }
     return;
   }
+  const cfs = e.target.closest('[data-cf]');
+  if (cfs) { if (cfs.dataset.cf === 'search') openSearch(); return; }
+  const shf = e.target.closest('[data-shuffle]');
+  if (shf) { const s0 = cur(); if (s0 instanceof ListScreen && s0.shuffle) { s0.selShuffle = false; shufflePlayList(s0.shuffle, s0.title); } return; }
   const s = cur();
   const strow = e.target.closest('.st-row');
   if (strow && s instanceof StationScreen) { const i = +strow.dataset.i; if (i !== s.sel) { s.sel = i; s.draw(); } s.select(); return; }
@@ -2451,8 +2600,9 @@ let lp = null;
 $('#body').addEventListener('pointerdown', e => {
   const s = cur();
   const row = e.target.closest('.row');
-  if (!row || !(s instanceof ListScreen) || !s.tracks) return;
-  const idx = s.top + Array.prototype.indexOf.call(row.parentNode.children, row);
+  if (!row || row.dataset.shuffle || !(s instanceof ListScreen) || !s.tracks) return;
+  const sib = Array.prototype.filter.call(row.parentNode.children, el => el.classList.contains('row') && !el.dataset.shuffle);
+  const idx = s.top + sib.indexOf(row);
   lp = { x: e.clientX, y: e.clientY, timer: setTimeout(() => {
     const it = s.items[idx];
     if (it && it.key) { clickBlockUntil = Date.now() + 600; s.sel = idx; s.draw(); haptic(); openTrackOptions(it, s.listForOptions()); }
