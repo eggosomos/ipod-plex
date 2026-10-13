@@ -443,7 +443,7 @@ let clientId = '';
 try { clientId = localStorage.getItem('ipodcid') || ''; if (!clientId) { clientId = 'ipod-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem('ipodcid', clientId); } } catch (e) { clientId = 'ipod-web'; }
 
 /* ================= Conexión con Plex: casa, fuera de casa y relé ================= */
-const conn = { base: null, rank: 0, tried: false, machineId: null, checkedAt: 0, token: null };
+const conn = { base: null, rank: 0, tried: false, machineId: null, checkedAt: 0, token: null, skippedHttp: 0, foundServer: false };
 // Token para hablar con el servidor. No siempre sirve el token de la cuenta: cuando
 // el servidor es de otra persona (biblioteca compartida) hay que usar el token que
 // plex.tv da para ESE servidor (campo accessToken de /api/v2/resources).
@@ -526,7 +526,8 @@ function resolveConnection(force) {
   if (resolving && !force) return resolving;
   resolving = (async () => {
     const cands = new Map();
-    const add = (uri, rank) => { if (!uri) return; if (pageIsHttps() && /^http:/i.test(uri)) return; if (!cands.has(uri)) cands.set(uri, rank); };
+    let skippedHttp = 0;
+    const add = (uri, rank) => { if (!uri) return; if (pageIsHttps() && /^http:/i.test(uri)) { skippedHttp++; return; } if (!cands.has(uri)) cands.set(uri, rank); };
     add(normBase(cfg.base), 0);
     add(normBase(cfg.remote), 1);
     if (cfg.last) add(cfg.last, 1); // la última que funcionó, para ir directo fuera de casa
@@ -534,6 +535,8 @@ function resolveConnection(force) {
     // El token del servidor compartido hay que fijarlo ANTES de probar las direcciones.
     if (disc.token) { conn.token = disc.token; if (disc.machineId) conn.machineId = disc.machineId; }
     disc.cands.forEach(c => add(c.uri, c.rank));
+    conn.skippedHttp = skippedHttp;
+    conn.foundServer = !!disc.machineId;
     let best = null, authBest = null;
     await new Promise(done => {
       let pending = cands.size, timer = null;
@@ -2444,7 +2447,7 @@ function settingsScreen() {
     { label: () => 'Fondo con la carátula: ' + (cfg.ultra ? 'Sí' : 'No'), act: () => { cfg.ultra = !cfg.ultra; saveCfg(); refreshNowPlaying(); } },
     { label: () => 'Reanudar al abrir: ' + (cfg.resume ? 'Sí' : 'No'), act: () => { cfg.resume = !cfg.resume; saveCfg(); if (!cfg.resume) { try { localStorage.removeItem('ipodsess'); } catch (e) {} } } },
     { label: () => 'Probar vibración', act: () => { buzz(true); flash('¿Has notado la vibración?'); } },
-    { label: () => 'Servidor: ' + connLabel(), act: async () => { setStatus('Buscando servidor…'); await resolveConnection(true); clearStatus(); updateNet(); const host = conn.base ? conn.base.replace(/^https?:\/\//i, '').split('/')[0] : ''; flash('Servidor: ' + connLabel() + (host ? ' · ' + host : '')); } },
+    { label: () => 'Servidor: ' + connLabel(), act: async () => { setStatus('Buscando servidor…'); await resolveConnection(true); clearStatus(); updateNet(); const host = conn.base ? conn.base.replace(/^https?:\/\//i, '').split('/')[0] : ''; const diag = conn.foundServer ? (conn.skippedHttp ? ' · servidor visto, ' + conn.skippedHttp + ' dir. http bloqueadas' : ' · servidor visto') : ' · no veo tu servidor en Plex'; flash('Servidor: ' + connLabel() + (host ? ' · ' + host : '') + diag); } },
     { label: () => 'Conexión con Plex', chev: true, act: () => openForm() },
     { label: () => 'Recargar biblioteca', act: () => { state.section = null; state.albums = null; state.artists = null; state.loved = undefined; state.cfIndex = 0; land.ready = false; flash('Biblioteca recargada'); } },
     { label: () => 'Borrar descargas', act: () => clearAllDownloads() }
@@ -2879,9 +2882,16 @@ $('#f-save').addEventListener('click', async () => {
     if (!conn.base) {
       try { await plex('/library/sections'); conn.base = normBase(cfg.base); conn.rank = 0; }
       catch (e) {
-        throw new Error(e.message === NO_SERVER
-          ? 'No consigo llegar al servidor con esas direcciones.' + (pageIsHttps() ? ' Esta página va por https, así que solo valen direcciones https o la detección automática de tu cuenta de Plex.' : '')
-          : e.message);
+        if (e.message !== NO_SERVER) throw new Error(e.message);
+        let extra = '';
+        if (pageIsHttps()) {
+          if (conn.foundServer) extra = ' He visto el servidor en tu cuenta de Plex, pero ninguna de sus direcciones sirve desde esta página https. Activa la Retransmisión (Relay) en el servidor: Plex → Ajustes → Acceso remoto.';
+          else extra = ' Esta página va por https, así que solo valen direcciones https o la detección automática de tu cuenta de Plex. Comprueba que el servidor esté encendido y que te hayan compartido la música.';
+          if (conn.skippedHttp) extra += ' Tu servidor solo ofrece direcciones http, que el navegador bloquea aquí.';
+        } else {
+          extra = ' Comprueba que el PC y Plex estén encendidos y en la misma red.';
+        }
+        throw new Error('No consigo llegar al servidor con esas direcciones.' + extra);
       }
     }
     const mc = await plex('/library/sections');
