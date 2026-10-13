@@ -305,6 +305,11 @@ html.forced .l-btn{visibility:visible}
 #form .res{margin-top:14px;font-size:14px;line-height:1.4;min-height:1.4em}
 #form .res.ok{color:#6fd68a}
 #form .res.err{color:#ff8d85}
+#form .servers{margin-top:4px;display:flex;flex-direction:column;gap:6px}
+#form .servers .msg{font-size:13px;color:#8a8e97;padding:2px 0}
+#form .srv{display:flex;align-items:center;gap:9px;font-size:15px;color:#eceef2;margin:0;padding:10px 12px;border:1px solid #3a3d44;border-radius:10px;background:#0f1012}
+#form .srv input{width:auto;margin:0;padding:0;flex:none}
+#form .srv span{flex:1}
 </style>
 </head>
 <body>
@@ -378,8 +383,10 @@ html.forced .l-btn{visibility:visible}
     <input id="f-base" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="http://192.168.1.158:32400">
     <label for="f-remote">Dirección fuera de casa (opcional)</label>
     <input id="f-remote" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Por ejemplo la de Tailscale: http://100.x.x.x:32400">
-    <label for="f-token">Token de Plex</label>
-    <input id="f-token" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Pega aquí tu token">
+    <label for="f-token">Tu token de Plex (el de tu propia cuenta)</label>
+    <input id="f-token" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Pega aquí tu token, no el del dueño">
+    <label>Servidor de música</label>
+    <div class="servers" id="f-servers"></div>
     <label for="f-lib">Biblioteca de música (opcional)</label>
     <input id="f-lib" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Si lo dejas vacío, uso la primera">
     <div class="res" id="f-res"></div>
@@ -423,10 +430,11 @@ const SEARCH_SVG = '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.4
 /* ================= Configuración ================= */
 const THEMES = [['white', 'Blanco'], ['black', 'Negro'], ['grafito', 'Grafito'], ['azul', 'Azul'], ['rojo', 'Rojo'], ['verde', 'Verde'], ['morado', 'Morado'], ['naranja', 'Naranja']];
 const SIZES = [['small', 'Pequeño'], ['med', 'Mediano'], ['big', 'Grande']];
-const DEFAULTS = { base: 'http://192.168.1.158:32400', remote: '', token: '', stoken: '', section: '', theme: 'white', size: 'med', vib: true, sound: true, eq: 'off', fade: 0, viz: true, ultra: true, resume: true };
+const DEFAULTS = { base: 'http://192.168.1.158:32400', remote: '', token: '', stoken: '', smachine: '', section: '', theme: 'white', size: 'med', vib: true, sound: true, eq: 'off', fade: 0, viz: true, ultra: true, resume: true };
 const cfg = Object.assign({}, DEFAULTS);
 try { Object.assign(cfg, JSON.parse(localStorage.getItem('ipodcfg') || '{}')); } catch (e) {}
 if (cfg.stoken == null) cfg.stoken = '';
+if (cfg.smachine == null) cfg.smachine = '';
 if (cfg.fade == null) cfg.fade = 0;
 if (cfg.eq == null) cfg.eq = 'off';
 if (cfg.viz == null) cfg.viz = true;
@@ -492,34 +500,64 @@ async function ping(uri) {
   }
   return auth ? 'auth' : false;
 }
-async function discoverConnections() {
-  const empty = { cands: [], token: '', machineId: null, name: '' };
-  if (!cfg.token) return empty;
+async function fetchServerResources(token) {
+  if (!token) return [];
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), 4500);
   try {
-    const u = 'https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1&X-Plex-Token=' + encodeURIComponent(cfg.token) +
+    const u = 'https://plex.tv/api/v2/resources?includeHttps=1&includeRelay=1&X-Plex-Token=' + encodeURIComponent(token) +
       '&X-Plex-Client-Identifier=' + encodeURIComponent(clientId) + '&X-Plex-Product=iPodPlex';
     const r = await fetch(u, { signal: ctl.signal, cache: 'no-store', headers: { Accept: 'application/json' } });
-    if (!r.ok) return empty;
+    if (!r.ok) return [];
     const list = await r.json();
-    const servers = (Array.isArray(list) ? list : []).filter(d => (d.provides || '').split(',').indexOf('server') !== -1);
-    if (!servers.length) return empty;
-    // Si ya sabemos el identificador de máquina, elegimos ese servidor; si no,
-    // el primero propio y, si no tenemos ninguno (usuario con biblioteca compartida),
-    // el primer servidor que nos hayan compartido.
-    const owned = servers.filter(d => d.owned);
-    const shared = servers.filter(d => !d.owned);
-    const pick = (conn.machineId && servers.find(d => d.clientIdentifier === conn.machineId)) ||
-      owned[0] || shared[0] || servers[0];
-    // Cada servidor trae su propio token de acceso: es el que vale para un servidor
-    // compartido (el token de la cuenta no sirve para acceder a él).
-    const token = pick.accessToken || cfg.token;
-    const cands = (pick.connections || [])
-      .map(c => ({ uri: String(c.uri || '').replace(/\/+$/, ''), rank: c.relay ? 3 : c.local ? 0 : 1 }))
-      .filter(c => c.uri);
-    return { cands: cands, token: token, machineId: pick.clientIdentifier || null, name: pick.name || '' };
-  } catch (e) { return empty; } finally { clearTimeout(t); }
+    return (Array.isArray(list) ? list : []).filter(d => (d.provides || '').split(',').indexOf('server') !== -1);
+  } catch (e) { return []; } finally { clearTimeout(t); }
+}
+// Cada servidor trae su propio token de acceso (accessToken): es el que vale para un
+// servidor compartido. El token de la cuenta no sirve para acceder a la biblioteca de
+// otro. Elegimos el servidor guardado (cfg.smachine) o, si no, el primero propio y, si
+// no tenemos ninguno (usuario con biblioteca compartida), el primero que nos compartan.
+function pickServer(servers) {
+  const wanted = cfg.smachine || conn.machineId;
+  if (wanted) { const m = servers.find(s => s.clientIdentifier === wanted); if (m) return m; }
+  const owned = servers.filter(s => s.owned);
+  const shared = servers.filter(s => !s.owned);
+  return owned[0] || shared[0] || servers[0];
+}
+async function discoverConnections() {
+  const empty = { cands: [], token: '', machineId: null, name: '' };
+  const servers = await fetchServerResources(cfg.token);
+  if (!servers.length) return empty;
+  const pick = pickServer(servers);
+  // El token del servidor puede venir como accessToken (JSON v2). Si no, usamos el de la cuenta.
+  const token = pick.accessToken || pick.access_token || cfg.token;
+  const cands = (pick.connections || [])
+    .map(c => ({ uri: String(c.uri || '').replace(/\/+$/, ''), rank: c.relay ? 3 : c.local ? 0 : 1 }))
+    .filter(c => c.uri);
+  return { cands: cands, token: token, machineId: pick.clientIdentifier || null, name: pick.name || '' };
+}
+// Rellena la lista de servidores del formulario para que cada uno elija el suyo.
+async function loadServerChoices(token) {
+  const box = $('#f-servers');
+  if (!box) return;
+  if (!token) { box.innerHTML = '<div class="msg">Pega tu token y te muestro tus servidores.</div>'; return; }
+  box.innerHTML = '<div class="msg">Buscando tus servidores…</div>';
+  const servers = await fetchServerResources(token);
+  if (!servers.length) { box.innerHTML = '<div class="msg">No veo ningún servidor en esta cuenta. Revisa el token o que te hayan compartido la música.</div>'; return; }
+  box.innerHTML = '';
+  const preferred = pickServer(servers);
+  servers.forEach(s => {
+    const lab = document.createElement('label');
+    lab.className = 'srv';
+    const radio = document.createElement('input');
+    radio.type = 'radio'; radio.name = 'fsv'; radio.value = s.clientIdentifier || '';
+    if (s === preferred || (cfg.smachine && cfg.smachine === s.clientIdentifier)) radio.checked = true;
+    const span = document.createElement('span');
+    span.textContent = (s.name || 'Servidor') + (s.owned ? '  (tuyo)' : '  (compartido)');
+    lab.appendChild(radio); lab.appendChild(span);
+    box.appendChild(lab);
+  });
+  if (!box.querySelector('input:checked')) { const first = box.querySelector('input'); if (first) first.checked = true; }
 }
 let resolving = null;
 function resolveConnection(force) {
@@ -2861,7 +2899,11 @@ function openForm(msg) {
   const r = $('#f-res');
   r.className = 'res'; r.textContent = msg || '';
   $('#form').classList.add('open');
+  loadServerChoices(cfg.token);
 }
+// Al pegar/cambiar el token, recargamos la lista de servidores de esa cuenta.
+$('#f-token').addEventListener('change', () => loadServerChoices($('#f-token').value.trim()));
+$('#f-token').addEventListener('blur', () => loadServerChoices($('#f-token').value.trim()));
 $('#f-cancel').addEventListener('click', () => $('#form').classList.remove('open'));
 $('#f-save').addEventListener('click', async () => {
   cfg.base = normBase($('#f-base').value) || DEFAULTS.base;
@@ -2869,8 +2911,10 @@ $('#f-save').addEventListener('click', async () => {
   const newToken = $('#f-token').value.trim();
   // Si cambia el token de la cuenta, el token guardado del servidor (de otro dueño,
   // p. ej. una biblioteca compartida) deja de valer: hay que volver a descubrirlo.
-  if (newToken !== cfg.token) { conn.token = null; cfg.stoken = ''; conn.machineId = null; }
+  if (newToken !== cfg.token) { conn.token = null; cfg.stoken = ''; conn.machineId = null; cfg.smachine = ''; }
   cfg.token = newToken;
+  const srv = $('#f-servers') && $('#f-servers').querySelector('input[name="fsv"]:checked');
+  if (srv) cfg.smachine = srv.value || '';
   cfg.section = $('#f-lib').value.trim();
   const r = $('#f-res');
   r.className = 'res'; r.textContent = 'Buscando tu servidor…';
