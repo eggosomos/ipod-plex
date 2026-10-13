@@ -135,8 +135,10 @@ html.has-bat #hd-bat{display:block}
 .cf-search:active{background:rgba(255,255,255,.34)}
 
 /* Reproduciendo */
-.np{position:absolute;inset:0;padding:.9em 1em .6em;display:flex;flex-direction:column;align-items:center;gap:.35em}
+.np{position:absolute;inset:0;padding:.9em 1em .6em;display:flex;flex-direction:column;align-items:center;gap:.35em;isolation:isolate}
 .np>*{flex:none}
+.np-blur{position:absolute;inset:-12%;z-index:-1;background-size:cover;background-position:center;filter:blur(34px) saturate(1.5);opacity:.5;transform:scale(1.12);pointer-events:none}
+.np-viz{position:absolute;left:0;right:0;bottom:0;width:100%;height:42%;z-index:-1;opacity:.45;pointer-events:none}
 .np-art{flex:1 1 0;min-height:4em;aspect-ratio:1/1;max-width:100%;background:#d9dce2;box-shadow:0 2px 6px rgba(0,0,0,.35);overflow:hidden;
   display:flex;align-items:center;justify-content:center;font-size:3em;color:#9aa0aa}
 .np-art img{width:100%;height:100%;object-fit:cover;display:block}
@@ -421,10 +423,14 @@ const SEARCH_SVG = '<svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.4
 /* ================= Configuración ================= */
 const THEMES = [['white', 'Blanco'], ['black', 'Negro'], ['grafito', 'Grafito'], ['azul', 'Azul'], ['rojo', 'Rojo'], ['verde', 'Verde'], ['morado', 'Morado'], ['naranja', 'Naranja']];
 const SIZES = [['small', 'Pequeño'], ['med', 'Mediano'], ['big', 'Grande']];
-const DEFAULTS = { base: 'http://192.168.1.158:32400', remote: '', token: '', section: '', theme: 'white', size: 'med', vib: true, sound: true, norm: false };
+const DEFAULTS = { base: 'http://192.168.1.158:32400', remote: '', token: '', section: '', theme: 'white', size: 'med', vib: true, sound: true, eq: 'off', fade: 0, viz: true, ultra: true, resume: true };
 const cfg = Object.assign({}, DEFAULTS);
 try { Object.assign(cfg, JSON.parse(localStorage.getItem('ipodcfg') || '{}')); } catch (e) {}
-cfg.norm = false; // opción retirada: sin normalización de volumen
+if (cfg.fade == null) cfg.fade = 0;
+if (cfg.eq == null) cfg.eq = 'off';
+if (cfg.viz == null) cfg.viz = true;
+if (cfg.ultra == null) cfg.ultra = true;
+if (cfg.resume == null) cfg.resume = true;
 function saveCfg() { try { localStorage.setItem('ipodcfg', JSON.stringify(cfg)); } catch (e) {} }
 function applyTheme() { document.documentElement.dataset.theme = cfg.theme; }
 function applySize() { document.documentElement.dataset.size = cfg.size || 'med'; }
@@ -934,6 +940,13 @@ function openTrackOptions(t, list) {
     rows.push({ label: lbl + ' · ' + o.title, sub: 'Estás escuchando desde aquí', act: () => gotoOrigin(o) });
   }
   rows.push({ label: 'Ver la letra', act: () => showLyricsFor(t) });
+  rows.push({ label: '▶ Reproducir a continuación', act: () => queuePlayNext(t) });
+  rows.push({ label: '＋ Añadir a la cola', act: () => queueAppend(t) });
+  if (player.queue.indexOf(t) >= 0 && player.queue.length > 1) {
+    rows.push({ label: 'Subir en la cola', act: () => moveInQueue(t, -1) });
+    rows.push({ label: 'Bajar en la cola', act: () => moveInQueue(t, 1) });
+    rows.push({ label: 'Quitar de la cola', act: () => removeFromQueue(t) });
+  }
   rows.push({ label: 'Añadir a lista de reproducción…', act: () => openPlaylistSheet([t]) });
   if (list && list.length > 1 && list.length <= 400) rows.push({ label: 'Añadir las ' + list.length + ' canciones a una lista…', act: () => openPlaylistSheet(list) });
   if (offIds.has(t.id)) rows.push({ label: 'Quitar descarga', act: () => removeDownload(t) });
@@ -992,47 +1005,109 @@ function haptic() {
   if (cfg.sound) clickSound();
 }
 
-/* ================= Normalización de volumen ================= */
-// Pasa el audio por un compresor de la Web Audio API para igualar el volumen
-// entre canciones. Necesita que Plex permita CORS; si no, se desactiva sola.
-let normNodes = null;
-function buildNorm() {
-  if (normNodes) return normNodes;
+/* ================= Sonido: ecualizador, fundido y visualizador (Web Audio) ================= */
+// La música pasa por un grafo de Web Audio (10 filtros + ganancia maestra + analizador).
+// Se activa solo si hace falta (ecualizador, visualizador o fundido) y necesita que Plex
+// permita CORS; si no, se desactiva sola y vuelve al audio normal.
+const EQ_BANDS = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+const EQ_PRESETS = [
+  ['off', 'Desactivado', null],
+  ['flat', 'Plano', [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]],
+  ['pop', 'Pop', [-1, 2, 4, 4, 1, -1, -1, 1, 2, 2]],
+  ['rock', 'Rock', [4, 3, 2, 0, -1, -1, 0, 2, 3, 4]],
+  ['jazz', 'Jazz', [3, 2, 1, 2, -1, -1, 0, 1, 2, 3]],
+  ['clasica', 'Clásica', [4, 3, 2, 1, -1, -1, 0, 2, 3, 4]],
+  ['voz', 'Voz', [-2, -1, 0, 1, 3, 4, 4, 2, 1, 0]],
+  ['bajos', 'Graves +', [6, 5, 4, 2, 0, 0, 0, 0, 0, 0]],
+  ['agudos', 'Agudos +', [0, 0, 0, 0, 0, 1, 2, 4, 5, 6]],
+  ['electronica', 'Electrónica', [4, 3, 1, 0, -2, 1, 0, 1, 3, 4]],
+  ['latina', 'Latina', [3, 2, 1, 0, -1, 0, 1, 2, 3, 4]]
+];
+let audioGraph = null;
+function soundNeeded() { return cfg.eq !== 'off' || cfg.viz || (cfg.fade > 0); }
+function buildAudioGraph() {
+  if (audioGraph) return audioGraph;
   ensureAudio();
   if (!ac) return null;
   try {
     const src = ac.createMediaElementSource(audio);
-    const comp = ac.createDynamicsCompressor();
-    try {
-      comp.threshold.value = -22; comp.knee.value = 30; comp.ratio.value = 6;
-      comp.attack.value = 0.01; comp.release.value = 0.4;
-    } catch (e) {}
-    const gain = ac.createGain(); gain.gain.value = 1.0;
-    normNodes = { src: src, comp: comp, gain: gain };
-  } catch (e) { normNodes = null; }
-  return normNodes;
+    const filters = EQ_BANDS.map((f, i) => {
+      const b = ac.createBiquadFilter();
+      b.type = i === 0 ? 'lowshelf' : i === EQ_BANDS.length - 1 ? 'highshelf' : 'peaking';
+      b.frequency.value = f; b.Q.value = 1; b.gain.value = 0;
+      return b;
+    });
+    const master = ac.createGain(); master.gain.value = 1;
+    const analyser = ac.createAnalyser(); analyser.fftSize = 128; analyser.smoothingTimeConstant = 0.8;
+    let node = src;
+    filters.forEach(f => { node.connect(f); node = f; });
+    node.connect(master); master.connect(analyser); analyser.connect(ac.destination);
+    try { audio.crossOrigin = 'anonymous'; } catch (e) {}
+    audioGraph = { src: src, filters: filters, master: master, analyser: analyser };
+  } catch (e) { audioGraph = null; }
+  return audioGraph;
 }
-function applyNorm() {
-  const n = buildNorm();
-  if (!n) return;
+function applySound() {
+  if (!audioGraph) return;
+  const p = EQ_PRESETS.find(x => x[0] === cfg.eq) || EQ_PRESETS[0];
+  const g = p[2] || EQ_BANDS.map(() => 0);
+  audioGraph.filters.forEach((f, i) => { try { f.gain.value = g[i] || 0; } catch (e) {} });
+  setGain(1, 0);
+}
+// Comprueba si el servidor permite CORS en el audio (necesario para el ecualizador/visualizador).
+// Si no lo permite y creásemos el grafo, el navegador silenciaría la música; por eso se comprueba antes.
+function corsOk(url) {
+  return new Promise(res => {
+    if (!url || !/^https?:/i.test(url)) { res(url ? true : false); return; }
+    let done = false;
+    const ctl = new AbortController();
+    const to = setTimeout(() => { if (!done) { done = true; try { ctl.abort(); } catch (e) {} res(false); } }, 4000);
+    fetch(url, { method: 'GET', mode: 'cors', headers: { Range: 'bytes=0-1' }, signal: ctl.signal })
+      .then(r => { if (done) return; done = true; clearTimeout(to); try { r.body && r.body.cancel && r.body.cancel(); } catch (e) {} res(!!r && (r.ok || r.status === 206 || r.status === 200)); })
+      .catch(() => { if (done) return; done = true; clearTimeout(to); res(false); });
+  });
+}
+// Activa el sonido (ecualizador/visualizador/fundido) solo si CORS lo permite; si no, sigue sin ellos.
+let graphDenied = false;
+async function ensureGraph(src) {
+  if (audioGraph || !soundNeeded() || graphDenied) return;
+  const ok = await corsOk(src);
+  if (ok) { buildAudioGraph(); applySound(); }
+  else { graphDenied = true; flash('Tu Plex no permite el ecualizador desde aquí'); }
+}
+function setGain(v, ms) {
+  if (!audioGraph) return;
   try {
-    if (cfg.norm) {
-      try { audio.crossOrigin = 'anonymous'; } catch (e) {}
-      n.src.disconnect(); n.src.connect(n.comp); n.comp.connect(n.gain); n.gain.connect(ac.destination);
-    } else {
-      try { audio.removeAttribute('crossorigin'); } catch (e) {}
-      n.src.disconnect(); n.src.connect(ac.destination);
-    }
+    const par = audioGraph.master.gain, now = ac.currentTime;
+    par.cancelScheduledValues(now);
+    par.setValueAtTime(par.value, now);
+    if (ms > 0) par.linearRampToValueAtTime(v, now + ms / 1000); else par.value = v;
   } catch (e) {}
 }
-// Vuelve a cargar la canción actual conservando la posición (al activar/desactivar).
+// Fundido: sube el volumen al empezar la canción y lo baja en los últimos segundos.
+let wantFadeIn = false, fadeOutKey = null;
+function fadeInNow() {
+  if (!audioGraph) return;
+  if (cfg.fade > 0) { setGain(0, 0); setGain(1, cfg.fade * 1000); } else setGain(1, 0);
+}
+function maybeFadeOut() {
+  if (radio.active) return;
+  const dur = trackDur(), pos = audio.currentTime || 0;
+  if (!(dur > 0)) return;
+  const rem = dur - pos;
+  if (!(cfg.fade > 0) || !audioGraph) return;
+  if (rem > cfg.fade + 1.5) { if (fadeOutKey !== null) { fadeOutKey = null; setGain(1, 0); } return; }
+  const key = player.i + ':' + Math.round(dur);
+  if (rem <= cfg.fade && rem > 0.08) { if (fadeOutKey !== key) { fadeOutKey = key; setGain(0, rem * 1000); } }
+}
+// Vuelve a cargar la canción actual conservando la posición (al activar/desactivar el sonido).
 function reloadCurrentAtPos() {
   const t = currentTrack();
   if (!t) return;
   const pos = audio.currentTime || 0, wasPlaying = !audio.paused;
   const once = () => { audio.removeEventListener('loadedmetadata', once); try { audio.currentTime = pos; } catch (e) {} if (wasPlaying) audio.play().catch(() => {}); };
   audio.addEventListener('loadedmetadata', once);
-  loadTrack();
+  loadTrack({ noFade: true });
 }
 
 /* ================= Batería (solo si el dispositivo la expone) ================= */
@@ -1069,6 +1144,12 @@ function updateNet() {
 const audio = new Audio();
 audio.preload = 'auto';
 audio.setAttribute('playsinline', '');
+// La radio usa su propio elemento: así el grafo de Web Audio (ecualizador/visualizador)
+// de la música no afecta a las emisoras, que a menudo no permiten CORS.
+const radioAudio = new Audio();
+radioAudio.preload = 'none';
+radioAudio.setAttribute('playsinline', '');
+const activeMedia = () => (radio.active ? radioAudio : audio);
 const player = { queue: [], i: -1, shuffle: false, repeat: 'off', orig: null, origin: null, loader: null, total: 0, qStart: 0 };
 let objUrl = null, loadSeq = 0;
 
@@ -1090,8 +1171,7 @@ function playQueue(list, i, loader, total, qStart, origin) {
   player.total = total != null ? total : player.queue.length;
   player.qStart = qStart != null ? qStart : 0;
   audioErr = 0;
-  if (radio.active) { radio.active = false; radio.cur = null; radio.list = []; }
-  if (cfg.norm) applyNorm();
+  if (radio.active) { radio.active = false; radio.cur = null; radio.list = []; try { radioAudio.pause(); } catch (e) {} }
   if (player.shuffle) { player.shuffle = false; toggleShuffle(true); }
   loadTrack();
 }
@@ -1106,7 +1186,7 @@ async function ensureMore() {
   more.forEach(t => player.queue.push(t));
   return player.queue.length > before;
 }
-async function loadTrack() {
+async function loadTrack(opts) {
   const t = currentTrack();
   if (!t) return;
   const seq = ++loadSeq;
@@ -1118,10 +1198,22 @@ async function loadTrack() {
       if (rec && rec.audio) { if (objUrl) URL.revokeObjectURL(objUrl); objUrl = URL.createObjectURL(rec.audio); src = objUrl; }
     } catch (e) {}
   }
+  fadeOutKey = null;
+  wantFadeIn = !(opts && opts.noFade);
+  await ensureGraph(src);
+  if (seq !== loadSeq) return;
   audio.src = src;
-  const p = audio.play();
-  if (p && p.catch) p.catch(() => flash('Toca ⏯ para reproducir'));
+  if (opts && opts.pos) {
+    const seek = () => { try { audio.currentTime = opts.pos; } catch (e) {} };
+    audio.addEventListener('loadedmetadata', seek, { once: true });
+    audio.addEventListener('canplay', seek, { once: true });
+  }
+  if (!(opts && opts.paused)) {
+    const p = audio.play();
+    if (p && p.catch) p.catch(() => flash('Toca ⏯ para reproducir'));
+  }
   setMediaSession(t);
+  if (!(opts && opts.paused)) saveSession();
   const s = cur();
   if (s && s.refresh) s.refresh();
   updateLandBar();
@@ -1146,7 +1238,7 @@ function prevTrack() {
   player.i--; loadTrack();
 }
 function togglePlay() {
-  if (radio.active && radio.cur) { if (audio.paused) audio.play().catch(() => {}); else audio.pause(); return; }
+  if (radio.active && radio.cur) { if (radioAudio.paused) radioAudio.play().catch(() => {}); else radioAudio.pause(); updateHdIcon(); updateLandBar(); return; }
   if (!player.queue.length) { flash('Elige primero una canción'); return; }
   if (audio.paused) audio.play().catch(() => {}); else audio.pause();
 }
@@ -1176,32 +1268,102 @@ function toggleRepeat() {
   refreshTools();
 }
 function refreshTools() { const s = cur(); if (s instanceof NowPlaying) s.updateTools(); }
+function refreshNowPlaying() { for (let i = stack.length - 1; i >= 0; i--) { if (stack[i] instanceof NowPlaying) { if (cur() === stack[i]) stack[i].refresh(); break; } } }
+
+/* ---- Cola: reproducir a continuación, añadir y reordenar ---- */
+function queuePlayNext(t) {
+  if (!t || !t.key) return;
+  if (!player.queue.length) { playQueue([t], 0, null, null, null, player.origin); return; }
+  const at = Math.min(player.i + 1, player.queue.length);
+  player.queue.splice(at, 0, t);
+  if (player.orig) player.orig.splice(Math.min(player.orig.length, at), 0, t);
+  player.total = Math.max(player.total, player.queue.length);
+  saveSession();
+  const s = cur(); if (s instanceof ListScreen) s.draw();
+  flash('Se reproduce a continuación: ' + t.title);
+}
+function queueAppend(t) {
+  if (!t || !t.key) return;
+  if (!player.queue.length) { playQueue([t], 0, null, null, null, player.origin); return; }
+  player.queue.push(t);
+  if (player.orig) player.orig.push(t);
+  player.total = Math.max(player.total, player.queue.length);
+  saveSession();
+  flash('Añadida a la cola: ' + t.title);
+}
+function moveInQueue(t, dir) {
+  const i = player.queue.indexOf(t);
+  if (i < 0) { flash('No está en la cola'); return; }
+  const j = i + dir;
+  if (j < 0 || j >= player.queue.length) { flash(dir < 0 ? 'Ya es la primera' : 'Ya es la última'); return; }
+  const x = player.queue[i]; player.queue[i] = player.queue[j]; player.queue[j] = x;
+  if (player.i === i) player.i = j; else if (player.i === j) player.i = i;
+  if (player.orig) { const oi = player.orig.indexOf(t); if (oi >= 0) { const oj = oi + dir; if (oj >= 0 && oj < player.orig.length) { const y = player.orig[oi]; player.orig[oi] = player.orig[oj]; player.orig[oj] = y; } } }
+  saveSession();
+  const s = cur(); if (s instanceof ListScreen) s.draw();
+  flash(dir < 0 ? 'Subida' : 'Bajada');
+}
+function removeFromQueue(t) {
+  const i = player.queue.indexOf(t);
+  if (i < 0) { flash('No está en la cola'); return; }
+  player.queue.splice(i, 1);
+  if (player.orig) { const oi = player.orig.indexOf(t); if (oi >= 0) player.orig.splice(oi, 1); }
+  if (i < player.i) player.i--;
+  else if (i === player.i && player.i >= player.queue.length) player.i = player.queue.length - 1;
+  saveSession();
+  const s = cur(); if (s instanceof ListScreen) s.draw();
+  flash('Quitada de la cola');
+}
+
+/* ---- Sesión: recordar la última canción y la cola al cerrar la app ---- */
+function saveSession() {
+  if (!cfg.resume || radio.active) return;
+  try {
+    const q = player.queue.slice(0, 400).map(t => ({ id: t.id, title: t.title, artist: t.artist, album: t.album, thumb: t.thumb, dur: t.dur, key: t.key, rating: t.rating }));
+    localStorage.setItem('ipodsess', JSON.stringify({ q: q, i: player.i, pos: audio.currentTime || 0, shuffle: player.shuffle, repeat: player.repeat, origin: player.origin, total: player.total, qStart: player.qStart, at: Date.now() }));
+  } catch (e) {}
+}
+let _sessT = 0;
+function saveSessionThrottled() { const n = Date.now(); if (n - _sessT > 5000) { _sessT = n; saveSession(); } }
+function restoreSession() {
+  if (!cfg.resume || !cfg.token) return false;
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem('ipodsess') || 'null'); } catch (e) {}
+  if (!s || !s.q || !s.q.length || s.i < 0 || s.i >= s.q.length) return false;
+  player.queue = s.q; player.i = s.i;
+  player.origin = s.origin || null;
+  player.total = s.total != null ? s.total : s.q.length;
+  player.qStart = s.qStart || 0;
+  player.repeat = s.repeat || 'off';
+  player.loader = null; player.orig = null; player.shuffle = false;
+  loadTrack({ paused: true, pos: s.pos || 0, noFade: true });
+  updateIndicators();
+  return true;
+}
 
 audio.addEventListener('ended', () => nextTrack(true));
-audio.addEventListener('timeupdate', () => { const s = cur(); if (s && s.tick) s.tick(); landTick(); lyrTick(); });
-['play', 'pause', 'playing', 'emptied'].forEach(ev => audio.addEventListener(ev, () => { updateHdIcon(); updateLandBar(); const s = cur(); if (s instanceof RadioNowScreen) s.draw(); }));
+audio.addEventListener('timeupdate', () => { const s = cur(); if (s && s.tick) s.tick(); landTick(); lyrTick(); maybeFadeOut(); saveSessionThrottled(); });
+audio.addEventListener('playing', () => { if (wantFadeIn) { wantFadeIn = false; fadeInNow(); } else setGain(1, 0); });
+['play', 'pause', 'playing', 'emptied'].forEach(ev => audio.addEventListener(ev, () => { updateHdIcon(); updateLandBar(); saveSession(); const s = cur(); if (s instanceof RadioNowScreen) s.draw(); }));
+radioAudio.addEventListener('error', () => { if (radio.active && radio.cur) radioFail(); });
+['play', 'pause', 'playing', 'emptied'].forEach(ev => radioAudio.addEventListener(ev, () => { updateHdIcon(); updateLandBar(); updatePlaybackState(); const s = cur(); if (s instanceof RadioNowScreen) s.draw(); }));
+radioAudio.addEventListener('playing', () => { audioErr = 0; });
 /* Si una canción no carga (típico fuera de casa, con conexión lenta o por relé),
    reintenta una vez antes de rendirse y avisa si sigue fallando. */
 let audioErr = 0;
 audio.addEventListener('error', () => {
-  if (radio.active && radio.cur) { radioFail(); return; }
   const t = currentTrack();
   if (!t || offIds.has(t.id)) return; // descarga local: no es un fallo de red
-  // Si falla justo cuando pedíamos CORS por la normalización, la desactivamos y recargamos.
-  if (cfg.norm && normNodes && audio.crossOrigin === 'anonymous') {
-    cfg.norm = false; saveCfg(); applyNorm();
-    audioErr = 0;
-    flash('Tu Plex no permite normalizar el volumen; la he desactivado.');
-    setTimeout(() => { if (currentTrack() === t) loadTrack(); }, 400);
-    return;
-  }
   if (audioErr >= 2) { flash('No se pudo cargar. Revisa Remote Access de Plex.'); return; }
   audioErr++;
   flash(conn.rank > 0 ? 'Conexión lenta, reintentando…' : 'Reintentando la canción…');
   setTimeout(() => { if (currentTrack() === t) loadTrack(); }, 1500);
 });
 audio.addEventListener('playing', () => { audioErr = 0; });
-function updateHdIcon() { $('#hd-play').classList.toggle('on', !!(currentTrack() || (radio.active && radio.cur)) && !audio.paused); }
+function updateHdIcon() {
+  const playing = radio.active ? !radioAudio.paused : !audio.paused;
+  $('#hd-play').classList.toggle('on', !!(currentTrack() || (radio.active && radio.cur)) && playing);
+}
 
 /* ================= Letra de la canción ================= */
 const lyrCache = new Map();
@@ -1389,8 +1551,8 @@ function setMediaSessionStation(st) {
 }
 if ('mediaSession' in navigator) {
   const h = (a, f) => { try { navigator.mediaSession.setActionHandler(a, f); } catch (e) {} };
-  h('play', () => audio.play());
-  h('pause', () => audio.pause());
+  h('play', () => { if (radio.active) radioAudio.play().catch(() => {}); else audio.play(); });
+  h('pause', () => { if (radio.active) radioAudio.pause(); else audio.pause(); });
   // La pantalla de bloqueo del iPhone muestra "siguiente / anterior canción".
   h('nexttrack', () => nextTrack());
   h('previoustrack', () => prevTrack());
@@ -1401,10 +1563,10 @@ if ('mediaSession' in navigator) {
 }
 function updatePlaybackState() {
   if (!('mediaSession' in navigator)) return;
-  try { navigator.mediaSession.playbackState = audio.paused ? 'paused' : 'playing'; } catch (e) {}
+  try { navigator.mediaSession.playbackState = (radio.active ? radioAudio.paused : audio.paused) ? 'paused' : 'playing'; } catch (e) {}
 }
 function updatePositionState() {
-  if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
+  if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState || radio.active) return;
   try {
     const d = audio.duration;
     if (isFinite(d) && d > 0) navigator.mediaSession.setPositionState({ duration: d, playbackRate: audio.playbackRate || 1, position: Math.min(audio.currentTime || 0, d) });
@@ -1687,6 +1849,8 @@ class NowPlaying {
   mount() {
     $('#body').innerHTML =
       '<div class="np' + (this.scrub ? ' scrub' : '') + '">' +
+      '<div class="np-blur"></div>' +
+      '<canvas class="np-viz"></canvas>' +
       '<div class="np-art">♪</div>' +
       '<div class="np-row"><span class="np-count"></span><span class="np-tools">' +
       '<span class="np-btn" data-np="shuffle">' + SHUFFLE_SVG + '</span>' +
@@ -1699,6 +1863,32 @@ class NowPlaying {
       '<div class="np-times"><span class="el">0:00</span><span class="rem">-0:00</span></div>' +
       '<div class="np-hint"></div></div>';
     this.refresh();
+  }
+  startViz() {
+    if (this._viz) { cancelAnimationFrame(this._viz); this._viz = null; }
+    const cv = $('.np-viz');
+    if (!cv) return;
+    if (!cfg.viz || !audioGraph || !audioGraph.analyser) { cv.style.display = 'none'; return; }
+    cv.style.display = '';
+    const ctx = cv.getContext('2d');
+    const an = audioGraph.analyser;
+    const data = new Uint8Array(an.frequencyBinCount);
+    const self = this;
+    const loop = () => {
+      if (cur() !== self || !document.body.contains(cv)) { self._viz = null; return; }
+      if (cv.width !== cv.clientWidth || cv.height !== cv.clientHeight) { cv.width = cv.clientWidth; cv.height = cv.clientHeight; }
+      an.getByteFrequencyData(data);
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      const n = Math.min(data.length, 48), bw = cv.width / n;
+      const col = getComputedStyle(document.documentElement).getPropertyValue('--accent') || '#888';
+      ctx.fillStyle = col.trim() || '#888';
+      for (let i = 0; i < n; i++) {
+        const v = data[i] / 255, bh = Math.max(1, v * cv.height);
+        ctx.fillRect(i * bw + bw * 0.12, cv.height - bh, bw * 0.76, bh);
+      }
+      self._viz = requestAnimationFrame(loop);
+    };
+    this._viz = requestAnimationFrame(loop);
   }
   hint() { return this.scrub ? 'Gira la rueda para avanzar o retroceder' : 'Centro: avanzar o retroceder'; }
   setTitle(text) {
@@ -1718,6 +1908,7 @@ class NowPlaying {
     const root = $('.np');
     if (!root) return;
     this.updateTools();
+    this.startViz();
     if (!t) {
       this.setTitle('Nada en reproducción');
       root.querySelector('.np-hint').textContent = 'Elige una canción en el menú';
@@ -1735,6 +1926,8 @@ class NowPlaying {
       img.onerror = () => { img.onerror = null; img.src = artDirect(t.thumb); };
       artBox.appendChild(img);
     } else artBox.textContent = '♪';
+    const blur = root.querySelector('.np-blur');
+    if (blur) blur.style.backgroundImage = (cfg.ultra && t.thumb) ? 'url("' + art(t.thumb, 200) + '")' : 'none';
     root.querySelector('.np-hint').textContent = this.hint();
     this.tick();
   }
@@ -1904,7 +2097,7 @@ class RadioNowScreen {
       '<div class="np-title"><span>' + esc(st.name || 'Radio') + '</span></div>' +
       '<div class="np-artist">' + esc(radioCountry(st)) + '</div>' +
       '<div class="np-album">' + esc(radioMeta(st)) + '</div>' +
-      '<div class="rd-live' + (audio.paused ? '' : ' on') + '"><span class="dot"></span>' + (audio.paused ? 'PAUSADO' : 'EN DIRECTO') + '</div>' +
+      '<div class="rd-live' + (radioAudio.paused ? '' : ' on') + '"><span class="dot"></span>' + (radioAudio.paused ? 'PAUSADO' : 'EN DIRECTO') + '</div>' +
       '</div>';
   }
   scroll() {}
@@ -1912,8 +2105,6 @@ class RadioNowScreen {
   refresh() { this.draw(); }
 }
 
-// La radio no pasa por el compresor (muchas emisoras no permiten CORS): la conectamos directa.
-function radioRouteDirect() { if (!normNodes) return; try { normNodes.src.disconnect(); normNodes.src.connect(ac.destination); } catch (e) {} }
 function radioPlay(st, list, i) {
   if (!st) return;
   ensureAudio();
@@ -1921,11 +2112,11 @@ function radioPlay(st, list, i) {
   if (list) { radio.list = list.slice(); radio.i = i != null ? i : 0; }
   else if (i != null) radio.i = i;
   player.queue = []; player.i = -1; player.loader = null;
-  if (cfg.norm) { try { audio.removeAttribute('crossorigin'); } catch (e) {} radioRouteDirect(); }
+  try { audio.pause(); } catch (e) {}
   const u = radioUrl(st); const orig = st.url_resolved || st.url || '';
   radio.fallback = (u !== orig) ? orig : ''; radio.tried = false;
-  audio.src = u;
-  const p = audio.play(); if (p && p.catch) p.catch(() => {});
+  radioAudio.src = u;
+  const p = radioAudio.play(); if (p && p.catch) p.catch(() => {});
   setMediaSessionStation(st);
   updateHdIcon(); updateLandBar(); updatePlaybackState();
   const s = cur();
@@ -1938,7 +2129,7 @@ function radioFail() {
     radio.tried = true;
     const f = radio.fallback; radio.fallback = '';
     if (pageIsHttps() && /^http:\/\//i.test(f)) { flash('Esta emisora emite por http y el navegador seguro la bloquea. Prueba la app de Android o con VPN.'); return; }
-    audio.src = f; const p = audio.play(); if (p && p.catch) p.catch(() => {});
+    radioAudio.src = f; const p = radioAudio.play(); if (p && p.catch) p.catch(() => {});
     return;
   }
   flash('No se pudo reproducir la emisora. Prueba con otra.');
@@ -2183,16 +2374,59 @@ function musicMenu() {
     { label: 'Artistas', act: openArtists },
     { label: 'Álbumes', act: openAlbums },
     { label: 'Canciones', act: openSongs },
-    { label: 'Recién añadido', act: openRecent }
+    { label: 'Recién añadido', act: openRecent },
+    { label: 'Escuchado recientemente', act: openHistory },
+    { label: 'Más escuchado', act: openMostPlayed }
   ];
   return new ListScreen('Música', { items, label: it => it.label, onSelect: it => it.act() });
 }
+// Historial: la lista de reproducción reciente que guarda Plex.
+async function openHistory() {
+  openAsync('Reciente', async () => {
+    const mc = await plex('/status/sessions/history/all', { sort: 'viewedAt:desc', 'X-Plex-Container-Start': 0, 'X-Plex-Container-Size': 60 });
+    const raw = (mc.Metadata || []).filter(x => x.type === 'track' || (x.grandparentTitle && x.parentTitle));
+    const ids = [], seen = new Set();
+    raw.forEach(x => { if (x.ratingKey && !seen.has(x.ratingKey)) { seen.add(x.ratingKey); ids.push(x.ratingKey); } });
+    const tracks = await hydrateTracks(ids.slice(0, 30));
+    if (!tracks.length) throw new Error('Todavía no hay historial de escucha.');
+    return trackList('Reciente', tracks, { emptyText: 'Todavía no hay historial de escucha.' });
+  });
+}
+// Más escuchado: canciones ordenadas por número de reproducciones.
+async function openMostPlayed() {
+  openAsync('Más escuchado', async () => {
+    const s = await getSection();
+    const mc = await plex('/library/sections/' + s + '/all', { type: 10, sort: 'viewCount:desc', 'X-Plex-Container-Start': 0, 'X-Plex-Container-Size': 100 });
+    const tracks = (mc.Metadata || []).map(norm).filter(t => t.key);
+    if (!tracks.length) throw new Error('No hay canciones en tu biblioteca.');
+    return trackList('Más escuchado', tracks, { emptyText: 'No hay canciones en tu biblioteca.' });
+  });
+}
+// El historial solo trae el identificador: pedimos los metadatos (con su archivo) por tandas.
+async function hydrateTracks(ids) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 8) {
+    const res = await Promise.all(ids.slice(i, i + 8).map(id => plex('/library/metadata/' + id).then(mc => (mc.Metadata || [])[0]).catch(() => null)));
+    res.forEach(m => { if (m) { const t = norm(m); if (t.key) out.push(t); } });
+  }
+  return out;
+}
+function eqScreen() {
+  const items = EQ_PRESETS.map(p => ({ label: () => (cfg.eq === p[0] ? '✓ ' : '') + p[1], act: () => { cfg.eq = p[0]; saveCfg(); applySound(); reloadCurrentAtPos(); flash('Ecualizador: ' + p[1]); } }));
+  return new ListScreen('Ecualizador', { items, label: it => it.label(), onSelect: (it, i, s) => { it.act(); s.draw(); } });
+}
+function fadeLabel(v) { return v > 0 ? v + ' s' : 'No'; }
 function settingsScreen() {
   const items = [
     { label: () => 'Tema: ' + themeLabel(cfg.theme), act: () => { const i = THEMES.findIndex(t => t[0] === cfg.theme); cfg.theme = THEMES[(i + 1) % THEMES.length][0]; saveCfg(); applyLook(); flash('Tema: ' + themeLabel(cfg.theme)); } },
     { label: () => 'Tamaño: ' + sizeLabel(cfg.size), act: () => { const a = SIZES.map(s => s[0]); const i = a.indexOf(cfg.size); cfg.size = a[(i + 1) % a.length]; saveCfg(); applyLook(); flash('Tamaño: ' + sizeLabel(cfg.size)); } },
     { label: () => 'Vibración: ' + (cfg.vib ? 'Sí' : 'No'), act: () => { cfg.vib = !cfg.vib; saveCfg(); } },
     { label: () => 'Sonido de clic: ' + (cfg.sound ? 'Sí' : 'No'), act: () => { cfg.sound = !cfg.sound; saveCfg(); } },
+    { label: () => 'Ecualizador: ' + (EQ_PRESETS.find(p => p[0] === cfg.eq) || EQ_PRESETS[0])[1], chev: true, act: () => push(eqScreen()) },
+    { label: () => 'Fundido entre canciones: ' + fadeLabel(cfg.fade), act: () => { const a = [0, 3, 6, 9]; cfg.fade = a[(a.indexOf(cfg.fade) + 1) % a.length]; if (cfg.fade == null) cfg.fade = 0; saveCfg(); applySound(); reloadCurrentAtPos(); flash('Fundido: ' + fadeLabel(cfg.fade)); } },
+    { label: () => 'Visualizador: ' + (cfg.viz ? 'Sí' : 'No'), act: () => { cfg.viz = !cfg.viz; saveCfg(); applySound(); reloadCurrentAtPos(); refreshNowPlaying(); } },
+    { label: () => 'Fondo con la carátula: ' + (cfg.ultra ? 'Sí' : 'No'), act: () => { cfg.ultra = !cfg.ultra; saveCfg(); refreshNowPlaying(); } },
+    { label: () => 'Reanudar al abrir: ' + (cfg.resume ? 'Sí' : 'No'), act: () => { cfg.resume = !cfg.resume; saveCfg(); if (!cfg.resume) { try { localStorage.removeItem('ipodsess'); } catch (e) {} } } },
     { label: () => 'Probar vibración', act: () => { buzz(true); flash('¿Has notado la vibración?'); } },
     { label: () => 'Servidor: ' + connLabel(), act: async () => { setStatus('Buscando servidor…'); await resolveConnection(true); clearStatus(); updateNet(); const host = conn.base ? conn.base.replace(/^https?:\/\//i, '').split('/')[0] : ''; flash('Servidor: ' + connLabel() + (host ? ' · ' + host : '')); } },
     { label: () => 'Conexión con Plex', chev: true, act: () => openForm() },
@@ -2504,7 +2738,7 @@ function updateLandBar() {
     nt.textContent = t ? t.title : 'Nada en reproducción';
     $('.l-na').textContent = t ? t.artist : 'Toca una portada para elegir un álbum';
   }
-  $('[data-act=play]').innerHTML = audio.paused ? PLAY_SVG : PAUSE_SVG;
+  $('[data-act=play]').innerHTML = (radio.active ? radioAudio.paused : audio.paused) ? PLAY_SVG : PAUSE_SVG;
   const hh = $('[data-act=heart-now]');
   hh.innerHTML = HEART_SVG;
   hh.classList.toggle('on', isLiked(t));
@@ -2777,11 +3011,11 @@ document.addEventListener('keydown', e => {
 
 /* ================= Arranque ================= */
 applyLook();
-if (cfg.norm) applyNorm();
+applySound();
 push(mainMenu());
 updateLandBar();
 updateIndicators();
-resolveConnection().then(updateNet).catch(() => {});
+resolveConnection().then(() => { updateNet(); try { if (cfg.token) restoreSession(); } catch (e) {} }).catch(() => {});
 if (!cfg.token) openForm('Para empezar, pega tu token de Plex. Si tu servidor está en otro equipo, cambia también la dirección.');
 let rzTimer = null;
 function onResize() { updateMode(); clearTimeout(rzTimer); rzTimer = setTimeout(updateMode, 300); }
