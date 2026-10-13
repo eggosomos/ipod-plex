@@ -311,6 +311,10 @@ html.forced .l-btn{visibility:visible}
 #form .srv input{width:auto;margin:0;padding:0;flex:none}
 #form .srv span{flex:1}
 #form .linkbtn{display:block;margin:14px 0 0;padding:0;background:none;border:0;color:var(--accent);font-size:14px;font-weight:600;text-align:left}
+#form .plexbtn{display:block;width:100%;margin:2px 0 0;padding:13px;border-radius:10px;border:0;font-size:16px;font-weight:600;color:#fff;background:var(--accent)}
+#form .plexbtn:disabled{opacity:.6}
+#form .loginlink{color:var(--accent);font-weight:600;text-decoration:none}
+#form .logincode{margin-top:4px;color:#a3a7b0;font-size:13px}
 #form .adv{display:none;margin-top:6px;padding:0 12px 4px;border-left:2px solid #2c2e33}
 #form .adv.open{display:block}
 #form .adv .hint{font-size:12px;color:#8a8e97;margin:8px 0 2px;line-height:1.35}
@@ -382,16 +386,18 @@ html.forced .l-btn{visibility:visible}
 <div id="form">
   <div class="card">
     <h2>Conectar con Plex</h2>
-    <p>Solo necesitas tu token. La app encuentra el servidor sola.</p>
-    <label for="f-token">Tu token de Plex (el de tu propia cuenta)</label>
-    <input id="f-token" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Pega aquí tu token, no el del dueño">
+    <p id="f-intro">Inicia sesión con tu cuenta de Plex. La app encuentra el servidor sola.</p>
+    <button id="f-login" type="button" class="pri plexbtn">Iniciar sesión con Plex</button>
+    <div class="res" id="f-loginres"></div>
     <label>Servidor de música</label>
     <div class="servers" id="f-servers"></div>
     <label for="f-lib">Biblioteca de música (opcional)</label>
     <input id="f-lib" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Si lo dejas vacío, uso la primera">
     <button id="f-adv-toggle" type="button" class="linkbtn">Opciones avanzadas</button>
     <div id="f-adv" class="adv">
-      <p class="hint">Normalmente no hace falta: la app detecta las direcciones sola. Rellénalo solo si la detección falla (por ejemplo, con Tailscale).</p>
+      <p class="hint">Normalmente no hace falta. Aquí puedes pegar un token a mano o fijar una dirección (por ejemplo, con Tailscale) si la detección falla.</p>
+      <label for="f-token">Token de Plex (opcional, a mano)</label>
+      <input id="f-token" type="text" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Solo si no quieres usar el inicio de sesión">
       <label for="f-base">Dirección del servidor en casa (opcional)</label>
       <input id="f-base" type="url" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="http://ip-del-servidor:32400">
       <label for="f-remote">Dirección fuera de casa (opcional)</label>
@@ -548,10 +554,10 @@ async function discoverConnections() {
 async function loadServerChoices(token) {
   const box = $('#f-servers');
   if (!box) return;
-  if (!token) { box.innerHTML = '<div class="msg">Pega tu token y te muestro tus servidores.</div>'; return; }
+  if (!token) { box.innerHTML = '<div class="msg">Inicia sesión con Plex y te muestro tus servidores.</div>'; return; }
   box.innerHTML = '<div class="msg">Buscando tus servidores…</div>';
   const servers = await fetchServerResources(token);
-  if (!servers.length) { box.innerHTML = '<div class="msg">No veo ningún servidor en esta cuenta. Revisa el token o que te hayan compartido la música.</div>'; return; }
+  if (!servers.length) { box.innerHTML = '<div class="msg">No veo ningún servidor en esta cuenta. Revisa que te hayan compartido la música.</div>'; return; }
   box.innerHTML = '';
   const preferred = pickServer(servers);
   servers.forEach(s => {
@@ -567,6 +573,126 @@ async function loadServerChoices(token) {
   });
   if (!box.querySelector('input:checked')) { const first = box.querySelector('input'); if (first) first.checked = true; }
 }
+
+/* ================= Inicio de sesión con Plex (PIN + hosting) ================= */
+// Plex permite iniciar sesión sin pegar tokens: pedimos un PIN a plex.tv, abrimos
+// su página de login y esperamos a que la cuenta autorice. Cuando lo hace, plex.tv
+// nos devuelve el token de la cuenta. Mismos datos que antes, pero sin tocar tokens.
+function plexClientHeaders() {
+  const dev = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || 'Web';
+  return {
+    Accept: 'application/json',
+    'X-Plex-Product': 'iPod Plex',
+    'X-Plex-Version': '1.0',
+    'X-Plex-Client-Identifier': clientId,
+    'X-Plex-Device': /iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'iPhone' : 'Web',
+    'X-Plex-Device-Name': 'iPod Plex',
+    'X-Plex-Platform': 'Web',
+    'X-Plex-Platform-Version': dev
+  };
+}
+async function plexCreatePin() {
+  const r = await fetch('https://plex.tv/api/v2/pins?strong=false', { method: 'POST', headers: plexClientHeaders() });
+  if (!r.ok) throw new Error('Plex no responde al iniciar sesión (código ' + r.status + ').');
+  const j = await r.json();
+  if (!j || !j.id || !j.code) throw new Error('Plex no devolvió un PIN válido.');
+  return j;
+}
+function plexAuthUrl(code) {
+  const q = {
+    clientID: clientId,
+    code: code,
+    'context[device][product]': 'iPod Plex',
+    'context[device][version]': '1.0',
+    'context[device][platform]': 'Web',
+    'context[device][device]': 'iPod Plex'
+  };
+  return 'https://app.plex.tv/auth#?' + Object.keys(q).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(q[k])).join('&');
+}
+async function plexPollPin(id) {
+  const r = await fetch('https://plex.tv/api/v2/pins/' + id + '?X-Plex-Client-Identifier=' + encodeURIComponent(clientId), { headers: { Accept: 'application/json' } });
+  if (!r.ok) return null;
+  const j = await r.json().catch(() => null);
+  return (j && j.authToken) ? j.authToken : null;
+}
+// Nombre/email de la cuenta para mostrarlo en Ajustes.
+async function plexWhoami() {
+  try {
+    const r = await fetch('https://plex.tv/api/v2/user', { headers: { Accept: 'application/json', 'X-Plex-Token': authToken() } });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return { name: j.username || j.title || (j.email || '').split('@')[0] || 'Plex', email: j.email || '' };
+  } catch (e) { return null; }
+}
+// Cuenta activa, para mostrar el nombre en Ajustes.
+const account = { name: '', email: '', loaded: false };
+async function loadAccount() {
+  if (!cfg.token) { account.name = ''; account.email = ''; account.loaded = false; return; }
+  const who = await plexWhoami();
+  if (who) { account.name = who.name || ''; account.email = who.email || ''; account.loaded = true; }
+}
+function logoutPlex() {
+  stopLogin();
+  cfg.token = ''; cfg.stoken = ''; cfg.smachine = ''; cfg.section = '';
+  conn.token = null; conn.base = null; conn.machineId = null; conn.tried = false;
+  account.name = ''; account.email = ''; account.loaded = false;
+  try { localStorage.removeItem('ipodsess'); } catch (e) {}
+  saveCfg();
+  updateNet();
+  flash('Sesión cerrada');
+  openForm('Has cerrado la sesión. Inicia otra vez con tu cuenta de Plex.');
+}
+
+const login = { pin: null, timer: null, win: null, url: '', check: null, done: false };
+function stopLogin() { if (login.timer) { clearInterval(login.timer); login.timer = null; } }
+// Arranca el login: abre la página de Plex y va comprobando si ya has entrado.
+async function startPlexLogin(statusEl, btn, preWin) {
+  const setStat = (cls, txt) => { if (statusEl) { statusEl.className = 'res ' + (cls || ''); statusEl.textContent = txt; } };
+  stopLogin();
+  login.done = false;
+  if (btn) { btn.disabled = true; }
+  setStat('', 'Abriendo la página de Plex…');
+  let pin;
+  try { pin = await plexCreatePin(); }
+  catch (e) {
+    if (preWin && !preWin.closed) { try { preWin.close(); } catch (e2) {} }
+    if (btn) btn.disabled = false; setStat('err', e.message); return null;
+  }
+  login.pin = pin;
+  login.url = plexAuthUrl(pin.code);
+  // Si el navegador ya nos dejó abrir una ventana al pulsar (gesto del usuario), la usamos
+  // para que no la bloquee; si no, intentamos abrir una ahora.
+  if (preWin && !preWin.closed) { try { preWin.location.href = login.url; } catch (e) {} login.win = preWin; }
+  else { try { login.win = window.open(login.url, '_blank'); } catch (e) { login.win = null; } }
+  // En iOS instalado como app, window.open puede no abrir nada: ofrecemos un enlace.
+  setStat('', 'Esperando a que inicies sesión en Plex…');
+  if (statusEl) {
+    const a = document.createElement('a');
+    a.href = login.url; a.target = '_blank'; a.rel = 'noopener'; a.className = 'loginlink';
+    a.textContent = 'Si no se ha abierto, toca aquí.';
+    statusEl.appendChild(document.createElement('br'));
+    statusEl.appendChild(a);
+    const code = document.createElement('div');
+    code.className = 'logincode';
+    code.textContent = 'Código: ' + pin.code;
+    statusEl.appendChild(code);
+  }
+  const token = await new Promise(resolve => {
+    const deadline = Date.now() + 5 * 60 * 1000;
+    login.check = async () => {
+      if (login.done) return;
+      if (Date.now() > deadline) { login.done = true; stopLogin(); resolve(null); return; }
+      const t = await plexPollPin(pin.id);
+      if (t) { login.done = true; stopLogin(); resolve(t); }
+    };
+    login.timer = setInterval(login.check, 1500);
+    login.check();
+  });
+  login.check = null;
+  if (btn) btn.disabled = false;
+  return token;
+}
+async function cancelPlexLogin() { stopLogin(); if (login.win && !login.win.closed) { try { login.win.close(); } catch (e) {} } login.win = null; }
 let resolving = null;
 function resolveConnection(force) {
   if (resolving && !force) return resolving;
@@ -617,7 +743,10 @@ function resolveConnection(force) {
 }
 window.addEventListener('online', () => resolveConnection(true).then(updateNet).catch(() => {}));
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && Date.now() - conn.checkedAt > 60000) resolveConnection(true).then(updateNet).catch(() => {});
+  if (document.visibilityState === 'visible') {
+    if (login.timer && login.check) login.check();
+    if (Date.now() - conn.checkedAt > 60000) resolveConnection(true).then(updateNet).catch(() => {});
+  }
 });
 
 /* ================= Cliente de Plex ================= */
@@ -2495,8 +2624,9 @@ function settingsScreen() {
     { label: () => 'Fondo con la carátula: ' + (cfg.ultra ? 'Sí' : 'No'), act: () => { cfg.ultra = !cfg.ultra; saveCfg(); refreshNowPlaying(); } },
     { label: () => 'Reanudar al abrir: ' + (cfg.resume ? 'Sí' : 'No'), act: () => { cfg.resume = !cfg.resume; saveCfg(); if (!cfg.resume) { try { localStorage.removeItem('ipodsess'); } catch (e) {} } } },
     { label: () => 'Probar vibración', act: () => { buzz(true); flash('¿Has notado la vibración?'); } },
+    { label: () => 'Cuenta de Plex: ' + (account.name || (cfg.token ? 'conectado' : 'sin iniciar sesión')), chev: true, act: () => openForm() },
+    { label: () => 'Cerrar sesión de Plex', act: () => { if (cfg.token) logoutPlex(); else flash('No hay sesión iniciada'); } },
     { label: () => 'Servidor: ' + connLabel(), act: async () => { setStatus('Buscando servidor…'); await resolveConnection(true); clearStatus(); updateNet(); const host = conn.base ? conn.base.replace(/^https?:\/\//i, '').split('/')[0] : ''; const diag = conn.foundServer ? (conn.skippedHttp ? ' · servidor visto, ' + conn.skippedHttp + ' dir. http bloqueadas' : ' · servidor visto') : ' · no veo tu servidor en Plex'; flash('Servidor: ' + connLabel() + (host ? ' · ' + host : '') + diag); } },
-    { label: () => 'Conexión con Plex', chev: true, act: () => openForm() },
     { label: () => 'Recargar biblioteca', act: () => { state.section = null; state.albums = null; state.artists = null; state.loved = undefined; state.cfIndex = 0; land.ready = false; flash('Biblioteca recargada'); } },
     { label: () => 'Borrar descargas', act: () => clearAllDownloads() }
   ];
@@ -2911,30 +3041,25 @@ function openForm(msg) {
   $('#f-adv').classList.toggle('open', !!manual);
   const r = $('#f-res');
   r.className = 'res'; r.textContent = msg || '';
+  const lr = $('#f-loginres');
+  lr.className = 'res'; lr.textContent = '';
+  $('#f-login').textContent = cfg.token ? 'Cambiar de cuenta de Plex' : 'Iniciar sesión con Plex';
   $('#form').classList.add('open');
+  if (cfg.token) plexWhoami().then(who => { if (who && who.name && $('#form').classList.contains('open')) { lr.className = 'res ok'; lr.textContent = 'Sesión iniciada como ' + who.name + (who.email ? ' (' + who.email + ')' : '') + '.'; } });
   loadServerChoices(cfg.token);
 }
-// Al pegar/cambiar el token, recargamos la lista de servidores de esa cuenta.
+function readServerChoice() { const srv = $('#f-servers') && $('#f-servers').querySelector('input[name="fsv"]:checked'); if (srv) cfg.smachine = srv.value || ''; }
+// Al pegar/cambiar el token a mano, recargamos la lista de servidores de esa cuenta.
 $('#f-token').addEventListener('change', () => loadServerChoices($('#f-token').value.trim()));
 $('#f-token').addEventListener('blur', () => loadServerChoices($('#f-token').value.trim()));
-$('#f-cancel').addEventListener('click', () => $('#form').classList.remove('open'));
+$('#f-cancel').addEventListener('click', () => { stopLogin(); $('#form').classList.remove('open'); });
 $('#f-adv-toggle').addEventListener('click', () => $('#f-adv').classList.toggle('open'));
-$('#f-save').addEventListener('click', async () => {
-  cfg.base = normBase($('#f-base').value) || DEFAULTS.base;
-  cfg.remote = normBase($('#f-remote').value);
-  const newToken = $('#f-token').value.trim();
-  // Si cambia el token de la cuenta, el token guardado del servidor (de otro dueño,
-  // p. ej. una biblioteca compartida) deja de valer: hay que volver a descubrirlo.
-  if (newToken !== cfg.token) { conn.token = null; cfg.stoken = ''; conn.machineId = null; cfg.smachine = ''; }
-  cfg.token = newToken;
-  const srv = $('#f-servers') && $('#f-servers').querySelector('input[name="fsv"]:checked');
-  if (srv) cfg.smachine = srv.value || '';
-  cfg.section = $('#f-lib').value.trim();
-  const r = $('#f-res');
-  r.className = 'res'; r.textContent = 'Buscando tu servidor…';
+
+// Prueba la conexión con lo que haya ahora mismo y deja la app lista.
+async function testAndApply(r) {
   state.section = null; state.albums = null; state.artists = null; state.loved = undefined; state.cfIndex = 0; land.ready = false;
   try {
-    if (!cfg.token) throw new Error('Falta el token de Plex.');
+    if (!cfg.token) throw new Error('Inicia sesión con Plex o pega un token.');
     await resolveConnection(true);
     updateNet();
     if (!conn.base) {
@@ -2954,15 +3079,58 @@ $('#f-save').addEventListener('click', async () => {
     }
     const mc = await plex('/library/sections');
     const music = (mc.Directory || []).filter(d => d.type === 'artist');
-    if (!music.length) throw new Error('Conecta, pero no veo ninguna biblioteca de música.');
+    if (!music.length) throw new Error('Conecta, pero no veo ninguna biblioteca de música. ¿Te han compartido la música?');
     saveCfg();
     r.className = 'res ok';
     r.textContent = 'Conectado (' + connLabel() + '). Biblioteca: ' + music.map(d => d.title).join(', ');
     setTimeout(() => $('#form').classList.remove('open'), 1300);
+    return true;
   } catch (e) {
     r.className = 'res err';
     r.textContent = e.message;
+    return false;
   }
+}
+$('#f-save').addEventListener('click', async () => {
+  cfg.base = normBase($('#f-base').value) || DEFAULTS.base;
+  cfg.remote = normBase($('#f-remote').value);
+  const newToken = $('#f-token').value.trim();
+  // Si cambia el token a mano, el token del servidor guardado deja de valer.
+  if (newToken && newToken !== cfg.token) { conn.token = null; cfg.stoken = ''; conn.machineId = null; cfg.smachine = ''; }
+  if (newToken) cfg.token = newToken;
+  readServerChoice();
+  cfg.section = $('#f-lib').value.trim();
+  const r = $('#f-res');
+  r.className = 'res'; r.textContent = 'Buscando tu servidor…';
+  await testAndApply(r);
+});
+
+// Iniciar sesión con Plex: sin tokens ni direcciones.
+$('#f-login').addEventListener('click', async () => {
+  const btn = $('#f-login');
+  const st = $('#f-loginres');
+  const r = $('#f-res');
+  r.className = 'res'; r.textContent = '';
+  // Abrimos la ventana ya, dentro del clic, para que el navegador no la bloquee.
+  let w = null;
+  try { w = window.open('', '_blank'); } catch (e) { w = null; }
+  const token = await startPlexLogin(st, btn, w);
+  if (!token) {
+    if (st.textContent && st.textContent.indexOf('Esperando') === 0) { st.className = 'res err'; st.textContent = 'No se completó el inicio de sesión. Inténtalo otra vez.'; }
+    return;
+  }
+  if (token !== cfg.token) { conn.token = null; cfg.stoken = ''; conn.machineId = null; cfg.smachine = ''; }
+  cfg.token = token;
+  $('#f-token').value = token;
+  saveCfg();
+  const who = await plexWhoami();
+  st.className = 'res ok';
+  st.textContent = 'Sesión iniciada' + (who && who.name ? ' como ' + who.name : '') + '.';
+  $('#f-login').textContent = 'Cambiar de cuenta de Plex';
+  await loadServerChoices(token);
+  readServerChoice();
+  r.className = 'res'; r.textContent = 'Buscando tu servidor…';
+  await testAndApply(r);
 });
 
 /* ================= Rueda táctil (vertical) ================= */
@@ -3103,8 +3271,8 @@ applySound();
 push(mainMenu());
 updateLandBar();
 updateIndicators();
-resolveConnection().then(() => { updateNet(); try { if (cfg.token) restoreSession(); } catch (e) {} }).catch(() => {});
-if (!cfg.token) openForm('Para empezar, pega tu token de Plex. La app encontrará el servidor sola.');
+resolveConnection().then(() => { updateNet(); if (cfg.token) loadAccount(); try { if (cfg.token) restoreSession(); } catch (e) {} }).catch(() => {});
+if (!cfg.token) openForm('Inicia sesión con tu cuenta de Plex para empezar. La app encuentra el servidor sola.');
 let rzTimer = null;
 function onResize() { updateMode(); clearTimeout(rzTimer); rzTimer = setTimeout(updateMode, 300); }
 window.addEventListener('resize', onResize);
