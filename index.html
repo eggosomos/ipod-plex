@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="iPod">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#f7f8fa">
 <title>iPod</title>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -82,6 +82,8 @@ html.has-bat #hd-bat{display:block}
 .row .th{flex:none;width:1.7em;height:1.7em;margin-right:.6em;border-radius:.28em;overflow:hidden;background:#d9dce2;
   display:flex;align-items:center;justify-content:center;color:#9aa0aa;font-size:.98em;line-height:1}
 .row .th img{width:100%;height:100%;object-fit:cover;display:block}
+.row .th.ph img{display:none}
+.row .th.ph::after{content:'♪'}
 .row .th svg{width:1em;height:1em;fill:currentColor}
 .row.sel .th{background:rgba(255,255,255,.24);color:#fff}
 .row.shufhead{color:var(--accent)}
@@ -269,6 +271,13 @@ html.forced .l-btn{visibility:visible}
 .lp-row .mo{height:100%;display:inline-flex;align-items:center;padding:0 .4em;font-weight:900;color:#8a8f98}
 .lp-row.back .t{font-weight:700;color:#6db6ff}
 .lp-row.back .n{color:#6db6ff}
+.lp-row.shuf .t{font-weight:700;color:#6db6ff}
+.lp-row.shuf .n{color:#6db6ff}
+.lp-row.sub{height:3em}
+.lp-row .t2{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;overflow:hidden}
+.lp-row .t2 b{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lp-row .t2 small{color:#8a8f98;font-size:.8em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lp-row.now .t2 small{color:#5db1ff;opacity:.85}
 .lp-msg{padding:2em;text-align:center;color:#a9acb3}
 #land-in .sheet-card{background:#1c1d21;color:#fff}
 #land-in .sheet-list{overflow:hidden}
@@ -415,10 +424,19 @@ const SIZES = [['small', 'Pequeño'], ['med', 'Mediano'], ['big', 'Grande']];
 const DEFAULTS = { base: 'http://192.168.1.158:32400', remote: '', token: '', section: '', theme: 'white', size: 'med', vib: true, sound: true, norm: false };
 const cfg = Object.assign({}, DEFAULTS);
 try { Object.assign(cfg, JSON.parse(localStorage.getItem('ipodcfg') || '{}')); } catch (e) {}
+cfg.norm = false; // opción retirada: sin normalización de volumen
 function saveCfg() { try { localStorage.setItem('ipodcfg', JSON.stringify(cfg)); } catch (e) {} }
 function applyTheme() { document.documentElement.dataset.theme = cfg.theme; }
 function applySize() { document.documentElement.dataset.size = cfg.size || 'med'; }
-function applyLook() { applyTheme(); applySize(); }
+function applyLook() {
+  applyTheme(); applySize();
+  // Pinta también la barra de estado del móvil con el color del iPod.
+  try {
+    const c = getComputedStyle(document.documentElement).getPropertyValue('--body1').trim();
+    const m = document.querySelector('meta[name="theme-color"]');
+    if (m && c) m.setAttribute('content', c);
+  } catch (e) {}
+}
 function themeLabel(v) { const t = THEMES.find(x => x[0] === v); return t ? t[1] : 'Blanco'; }
 function sizeLabel(v) { const t = SIZES.find(x => x[0] === v); return t ? t[1] : 'Mediano'; }
 const state = { section: null, albums: null, artists: null, cfIndex: 0, loved: undefined };
@@ -591,23 +609,23 @@ function art(thumb, w) {
 }
 function artDirect(thumb) { const b = baseUrl(); return (thumb && b) ? b + thumb + '?X-Plex-Token=' + encodeURIComponent(cfg.token) : ''; }
 function trackUrl(t) { const b = baseUrl(); return b ? b + t.key + '?X-Plex-Token=' + encodeURIComponent(cfg.token) : ''; }
-// Celda de miniatura para las listas (con respaldo directo y nota musical si no hay carátula)
-function thumbCell(it) {
-  if (!it || it.head) return '';
-  const p = it.thumb || it.composite || (it.parentThumb || '');
-  if (!p) return '<span class="th ph">♪</span>';
-  const primary = art(p, 120);
-  const fb = artDirect(p);
-  return '<span class="th"><img loading="lazy" src="' + esc(primary) +
-    '" onerror="this.onerror=null;this.src=\'' + esc(fb) + '\'"></span>';
+// Precarga de miniaturas: así, al hacer scroll, la imagen ya está en caché y no parpadea.
+const thumbPre = new Map();
+function warmThumb(url) {
+  if (!url || thumbPre.has(url)) return;
+  const im = new Image();
+  im.decoding = 'async';
+  im.src = url;
+  thumbPre.set(url, im);
+  if (thumbPre.size > 240) { const first = thumbPre.keys().next().value; thumbPre.delete(first); }
 }
 // Reproduce una lista/álbum en orden aleatorio (baraja una copia y arranca la cola)
-function shufflePlayList(tracks, title) {
+function shufflePlayList(tracks, title, origin) {
   const list = (tracks || []).filter(t => t && t.key);
   if (!list.length) { flash('No hay canciones para mezclar'); return; }
   const a = list.slice();
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = a[i]; a[i] = a[j]; a[j] = x; }
-  playQueue(a, 0);
+  playQueue(a, 0, null, null, null, origin);
   push(new NowPlaying());
   flash('Aleatorio · ' + (title ? title + ' · ' : '') + a.length + ' canciones');
 }
@@ -918,6 +936,11 @@ function openTrackOptions(t, list) {
   if (!t || !t.key) return;
   const rows = [];
   rows.push({ label: isLiked(t) ? 'Quitar de favoritas' : '❤ Añadir a favoritas', act: () => toggleHeart(t) });
+  const o = player.origin;
+  if (o && o.ratingKey) {
+    const lbl = o.type === 'playlist' ? 'Ir a la lista' : o.type === 'artist' ? 'Ir al artista' : 'Ir al álbum';
+    rows.push({ label: lbl + ' · ' + o.title, sub: 'Estás escuchando desde aquí', act: () => gotoOrigin(o) });
+  }
   rows.push({ label: 'Ver la letra', act: () => showLyricsFor(t) });
   rows.push({ label: 'Añadir a lista de reproducción…', act: () => openPlaylistSheet([t]) });
   if (list && list.length > 1 && list.length <= 400) rows.push({ label: 'Añadir las ' + list.length + ' canciones a una lista…', act: () => openPlaylistSheet(list) });
@@ -1054,7 +1077,7 @@ function updateNet() {
 const audio = new Audio();
 audio.preload = 'auto';
 audio.setAttribute('playsinline', '');
-const player = { queue: [], i: -1, shuffle: false, repeat: 'off', orig: null, loader: null, total: 0, qStart: 0 };
+const player = { queue: [], i: -1, shuffle: false, repeat: 'off', orig: null, origin: null, loader: null, total: 0, qStart: 0 };
 let objUrl = null, loadSeq = 0;
 
 function fmt(s) {
@@ -1068,8 +1091,9 @@ function trackDur() {
   return d || 0;
 }
 function currentTrack() { return player.queue[player.i] || null; }
-function playQueue(list, i, loader, total, qStart) {
+function playQueue(list, i, loader, total, qStart, origin) {
   player.queue = list.slice(); player.i = i; player.orig = null;
+  player.origin = origin || null;
   player.loader = loader || null;
   player.total = total != null ? total : player.queue.length;
   player.qStart = qStart != null ? qStart : 0;
@@ -1409,6 +1433,7 @@ function show() {
   const s = cur();
   $('#screen').className = s.cls || '';
   $('#hd-title').textContent = s.title || '';
+  $('#body').dataset.owner = '';
   s.mount();
   updateHdIcon();
 }
@@ -1453,6 +1478,9 @@ class ListScreen {
     this.thumb = !!o.thumb;
     this.shuffle = o.shuffle || null;
     this.selShuffle = false;
+    this.origin = o.origin || null;
+    this._id = 'L' + Math.random().toString(36).slice(2);
+    this._rowEls = [];
     this.pageSize = 100;
     this.pending = new Set();
     this.sel = 0; this.top = 0;
@@ -1478,30 +1506,98 @@ class ListScreen {
     }).catch(() => { this.pending.delete(p); });
   }
   draw() {
-    if (!this.total) { $('#body').innerHTML = '<div class="empty">' + esc(this.emptyText) + '</div>'; return; }
+    const body = $('#body');
+    if (!this.total) { body.innerHTML = '<div class="empty">' + esc(this.emptyText) + '</div>'; body.dataset.owner = ''; this._rowEls = []; return; }
     const rows = this.rows();
-    let h = '';
-    if (this.shuffle) {
-      h += '<div class="row shufhead has-th' + (this.selShuffle ? ' sel' : '') + '" data-shuffle="1">' +
-        '<span class="th">' + SHUFFLE_SVG + '</span><span class="t">Aleatorio</span></div>';
+    // Solo reconstruimos el contenedor al entrar en la pantalla; al hacer scroll se reutilizan
+    // los mismos nodos (las imágenes no se vuelven a crear y no parpadean).
+    if (body.dataset.owner !== this._id) {
+      body.innerHTML = '';
+      body.dataset.owner = this._id;
+      this._rowEls = [];
     }
+    // Cabecera "Aleatorio"
+    let firstRow = null;
+    for (let el = body.firstChild; el; el = el.nextSibling) if (el.nodeType === 1 && el.classList && el.classList.contains('row')) { firstRow = el; break; }
+    const hasHeader = !!(firstRow && firstRow.dataset.shuffle);
+    if (this.shuffle) {
+      if (!hasHeader) {
+        const hd = document.createElement('div');
+        hd.className = 'row shufhead has-th';
+        hd.dataset.shuffle = '1';
+        hd.innerHTML = '<span class="th">' + SHUFFLE_SVG + '</span><span class="t">Aleatorio</span>';
+        body.insertBefore(hd, body.firstChild);
+      }
+      const hdEl = body.querySelector('.shufhead');
+      if (hdEl) hdEl.classList.toggle('sel', this.selShuffle);
+    } else if (hasHeader) firstRow.remove();
+    // Filas de elementos (las visibles van primero; las sobrantes se ocultan al final)
+    const itemRows = [];
+    for (let el = body.firstChild; el; el = el.nextSibling)
+      if (el.nodeType === 1 && el.classList && el.classList.contains('row') && !el.dataset.shuffle) itemRows.push(el);
     for (let k = 0; k < rows; k++) {
       const idx = this.top + k;
       if (idx >= this.total) break;
       const it = this.items[idx];
       if (it === undefined) this.ensure(idx);
-      const txt = it === undefined ? '…' : this.label(it);
-      const chev = it !== undefined && this.hasChev(it);
-      const isT = this.tracks && it !== undefined && it.key;
-      const th = this.thumb && it !== undefined ? thumbCell(it) : '';
-      const selRow = idx === this.sel && !this.selShuffle;
-      h += '<div class="row' + (selRow ? ' sel' : '') + (th ? ' has-th' : '') + '">' + th + '<span class="t">' + esc(txt) + '</span>' +
-        (chev ? '<span class="chev">›</span>' : '') +
-        (isT && selRow ? '<span class="more" data-i="' + idx + '">⋯</span>' : '') +
-        (isT && this.hearts ? '<span class="heart' + (isLiked(it) ? ' on' : '') + '" data-i="' + idx + '">' + HEART_SVG + '</span>' : '') + '</div>';
+      let el = itemRows[k];
+      if (!el) {
+        el = document.createElement('div');
+        el.className = 'row';
+        el.innerHTML = '<span class="th"><img alt=""></span><span class="t"></span><span class="chev">›</span>' +
+          '<span class="more">⋯</span><span class="heart">' + HEART_SVG + '</span>';
+        el._th = el.children[0]; el._t = el.children[1]; el._chev = el.children[2];
+        el._more = el.children[3]; el._heart = el.children[4];
+        const im = el._th.querySelector('img');
+        im.onerror = function () { const f = this.dataset.fb; if (f) { this.dataset.fb = ''; this.src = f; } };
+        body.appendChild(el);
+        itemRows.push(el);
+      }
+      this.paintRow(el, it, idx);
     }
-    $('#body').innerHTML = h;
+    for (let k = rows; k < itemRows.length; k++) itemRows[k].style.display = 'none';
+    // Precarga las miniaturas de la ventana visible y las de alrededor (arriba y abajo),
+    // así al girar la rueda la imagen ya está decodificada y no parpadea.
+    for (let k = -3; k < rows + 6; k++) {
+      const it = this.items[this.top + k];
+      if (it && !it.head) { const p = it.thumb || it.composite || it.parentThumb; if (p) warmThumb(art(p, 120)); }
+    }
+    this._rowEls = itemRows;
     this.ensure(this.sel + 30);
+  }
+  paintRow(el, it, idx) {
+    const defined = it !== undefined;
+    const selRow = idx === this.sel && !this.selShuffle;
+    const chev = defined && this.hasChev(it);
+    const isT = this.tracks && defined && it.key;
+    const showThumb = this.thumb && defined && !it.head;
+    el.style.display = '';
+    el.classList.toggle('sel', selRow);
+    el._t.textContent = defined ? this.label(it) : '…';
+    el._chev.style.display = chev ? '' : 'none';
+    el._more.style.display = (isT && selRow) ? '' : 'none';
+    el._more.dataset.i = idx;
+    el._heart.style.display = (isT && this.hearts) ? '' : 'none';
+    el._heart.dataset.i = idx;
+    el._heart.classList.toggle('on', !!(isT && isLiked(it)));
+    if (showThumb) {
+      el.classList.add('has-th');
+      el._th.style.display = '';
+      const p = it.thumb || it.composite || it.parentThumb || '';
+      const im = el._th.querySelector('img');
+      if (p) {
+        el._th.classList.remove('ph');
+        const url = art(p, 120);
+        if (im.dataset.src !== url) { im.dataset.src = url; im.dataset.fb = artDirect(p); im.src = url; }
+        warmThumb(url);
+      } else {
+        el._th.classList.add('ph');
+        if (im.dataset.src) { im.dataset.src = ''; im.removeAttribute('src'); }
+      }
+    } else {
+      el.classList.remove('has-th');
+      el._th.style.display = 'none';
+    }
   }
   scroll(d) {
     if (this.shuffle) {
@@ -1518,7 +1614,7 @@ class ListScreen {
     this.draw();
   }
   select() {
-    if (this.shuffle && this.selShuffle) { this.selShuffle = false; shufflePlayList(this.shuffle, this.title); return; }
+    if (this.shuffle && this.selShuffle) { this.selShuffle = false; shufflePlayList(this.shuffle, this.title, this.origin); return; }
     const it = this.items[this.sel];
     if (it !== undefined) this.onSelect(it, this.sel, this);
   }
@@ -1865,11 +1961,12 @@ function radioStep(d) {
 /* ================= Acciones del menú ================= */
 const trackList = (title, tracks, extra) => new ListScreen(title, Object.assign({
   items: tracks, chevron: false, tracks: true, thumb: true, shuffle: tracks, label: t => t.title,
-  onSelect: (t, i) => { playQueue(tracks, i); push(new NowPlaying()); }
+  onSelect: (t, i, self) => { playQueue(tracks, i, null, null, null, self.origin); push(new NowPlaying()); }
 }, extra || {}));
 
 function openAlbum(a) {
-  openAsync(a.title, async () => trackList(a.title, await loadTracks(a.ratingKey)));
+  openAsync(a.title, async () => trackList(a.title, await loadTracks(a.ratingKey),
+    { origin: { type: 'album', title: a.title, ratingKey: a.ratingKey, thumb: a.thumb || a.parentThumb || '' } }));
 }
 function openCoverFlow() {
   openAsync('Cover Flow', async () => {
@@ -1881,8 +1978,17 @@ function openCoverFlow() {
 function openPlaylist(p) {
   return openAsync(p.title, async () => {
     const raw = await loadAll('/playlists/' + p.ratingKey + '/items');
-    return trackList(p.title, raw.map(norm).filter(t => t.key), { emptyText: 'Esta lista está vacía.' });
+    return trackList(p.title, raw.map(norm).filter(t => t.key),
+      { emptyText: 'Esta lista está vacía.', origin: { type: 'playlist', title: p.title, ratingKey: p.ratingKey, thumb: p.thumb || p.composite || '' } });
   });
+}
+// "Ir al álbum / a la lista / al artista" desde los 3 puntos, según de dónde venga la música.
+function gotoOrigin(o) {
+  if (!o || !o.ratingKey) return;
+  if (document.documentElement.classList.contains('land')) { landGotoOrigin(o); return; }
+  if (o.type === 'playlist') openPlaylist({ title: o.title, ratingKey: o.ratingKey, thumb: o.thumb, composite: o.thumb });
+  else if (o.type === 'artist') openArtistFromSearch({ title: o.title, ratingKey: o.ratingKey, thumb: o.thumb });
+  else openAlbum({ title: o.title, ratingKey: o.ratingKey, thumb: o.thumb });
 }
 function openPlaylists() {
   openAsync('Listas', async () => {
@@ -2095,7 +2201,6 @@ function settingsScreen() {
     { label: () => 'Tamaño: ' + sizeLabel(cfg.size), act: () => { const a = SIZES.map(s => s[0]); const i = a.indexOf(cfg.size); cfg.size = a[(i + 1) % a.length]; saveCfg(); applyLook(); flash('Tamaño: ' + sizeLabel(cfg.size)); } },
     { label: () => 'Vibración: ' + (cfg.vib ? 'Sí' : 'No'), act: () => { cfg.vib = !cfg.vib; saveCfg(); } },
     { label: () => 'Sonido de clic: ' + (cfg.sound ? 'Sí' : 'No'), act: () => { cfg.sound = !cfg.sound; saveCfg(); } },
-    { label: () => 'Normalizar volumen: ' + (cfg.norm ? 'Sí' : 'No'), act: () => { cfg.norm = !cfg.norm; saveCfg(); applyNorm(); reloadCurrentAtPos(); flash(cfg.norm ? 'Normalización activada' : 'Normalización desactivada'); } },
     { label: () => 'Probar vibración', act: () => { buzz(true); flash('¿Has notado la vibración?'); } },
     { label: () => 'Servidor: ' + connLabel(), act: async () => { setStatus('Buscando servidor…'); await resolveConnection(true); clearStatus(); updateNet(); const host = conn.base ? conn.base.replace(/^https?:\/\//i, '').split('/')[0] : ''; flash('Servidor: ' + connLabel() + (host ? ' · ' + host : '')); } },
     { label: () => 'Conexión con Plex', chev: true, act: () => openForm() },
@@ -2130,7 +2235,7 @@ function mainMenu() {
 
 /* ================= Modo horizontal ================= */
 const land = { albums: null, i: 0, ready: false, loading: false, els: new Map(), panelAlbum: null, panelTracks: [],
-  panelMode: 'tracks', searchRows: [], resultsFrom: false };
+  panelMode: 'tracks', searchRows: [], resultsFrom: false, panelOrigin: null, shuffleable: false, panelSub: false };
 let forced = null; // 'cw' | 'ccw' | null  (giro manual si el iPhone tiene bloqueado el giro)
 let landMode = null;
 const mqLand = window.matchMedia('(orientation: landscape)');
@@ -2258,6 +2363,8 @@ async function landOpenPanel() {
   if (!a) return;
   land.panelMode = 'tracks'; land.resultsFrom = false; land.searchRows = [];
   land.panelAlbum = a;
+  land.shuffleable = true; land.panelSub = false;
+  land.panelOrigin = { type: 'album', title: a.title, ratingKey: a.ratingKey, thumb: a.thumb || a.parentThumb || '' };
   $('#lp-title').textContent = a.title;
   $('#lp-sub').textContent = a.parentTitle || '';
   const box = $('#lp-art');
@@ -2282,7 +2389,14 @@ function landDrawPanel() {
   const c = currentTrack();
   let h = '';
   if (land.resultsFrom) h += '<div class="lp-row back" data-act="lr-back"><span class="n">‹</span><span class="t">Volver a resultados</span><span class="d"></span></div>';
-  h += land.panelTracks.map((t, i) =>
+  if (land.shuffleable && land.panelTracks.length) h += '<div class="lp-row shuf" data-act="shuf-tracks"><span class="n">🔀</span><span class="t">Aleatorio</span><span class="d">' + land.panelTracks.length + '</span></div>';
+  if (land.panelSub) h += land.panelTracks.map((t, i) =>
+    '<div class="lp-row sub' + (c && c.id === t.id ? ' now' : '') + '" data-act="play-track" data-i="' + i + '">' +
+    '<span class="n">' + (i + 1) + '</span><span class="t2"><b>' + esc(t.title) + '</b><small>' +
+    esc([t.artist, t.album].filter(Boolean).join(' · ')) + '</small></span>' +
+    '<span class="heart' + (isLiked(t) ? ' on' : '') + '" data-act="heart" data-i="' + i + '">' + HEART_SVG + '</span>' +
+    '<span class="mo" data-act="more" data-i="' + i + '">⋯</span></div>').join('');
+  else h += land.panelTracks.map((t, i) =>
     '<div class="lp-row' + (c && c.id === t.id ? ' now' : '') + '" data-act="play-track" data-i="' + i + '">' +
     '<span class="n">' + (i + 1) + '</span><span class="t">' + esc(t.title) + '</span><span class="d">' + fmt(t.dur) + '</span>' +
     '<span class="heart' + (isLiked(t) ? ' on' : '') + '" data-act="heart" data-i="' + i + '">' + HEART_SVG + '</span>' +
@@ -2300,6 +2414,7 @@ async function landSearch() {
   const q = await askText('Buscar', 'Artista, álbum, canción o lista…');
   if (!q) return;
   land.panelAlbum = null; land.panelTracks = []; land.searchRows = []; land.resultsFrom = false;
+  land.panelOrigin = null; land.shuffleable = false; land.panelSub = false;
   land.panelMode = 'results';
   $('#lp-title').textContent = 'Buscar';
   $('#lp-sub').textContent = q;
@@ -2328,6 +2443,9 @@ async function landOpenResult(r) {
   land.resultsFrom = true;
   land.panelMode = 'tracks';
   land.panelAlbum = r.type === 'album' ? r.item : null;
+  land.shuffleable = true;
+  land.panelSub = r.type !== 'album';
+  land.panelOrigin = { type: r.type, title: r.title, ratingKey: r.item.ratingKey, thumb: (r.item.thumb || r.item.composite || '') };
   $('#lp-title').textContent = r.title;
   $('#lp-sub').textContent = r.type === 'artist' ? 'Artista' : r.type === 'album' ? 'Álbum' : 'Lista';
   const box = $('#lp-art'); box.innerHTML = '';
@@ -2345,6 +2463,43 @@ async function landOpenResult(r) {
     if (!tracks.length) { $('#lp-list').innerHTML = '<div class="lp-msg">No hay canciones aquí.</div>'; return; }
     landDrawPanel();
   } catch (e) { $('#lp-list').innerHTML = '<div class="lp-msg">' + esc(e.message) + '</div>'; }
+}
+// Abre en el panel lateral (horizontal) el álbum, lista o artista del que viene la música.
+async function landGotoOrigin(o) {
+  if (!o || !o.ratingKey) return;
+  land.resultsFrom = false; land.panelMode = 'tracks'; land.shuffleable = true;
+  land.panelOrigin = o;
+  const isPl = o.type === 'playlist';
+  land.panelSub = o.type !== 'album';
+  land.panelAlbum = o.type === 'album' ? o : null;
+  $('#lp-title').textContent = o.title;
+  $('#lp-sub').textContent = isPl ? 'Lista' : o.type === 'artist' ? 'Artista' : 'Álbum';
+  const box = $('#lp-art'); box.innerHTML = '';
+  const th = o.thumb;
+  if (th) { const img = new Image(); img.src = art(th, 400); img.onerror = () => { img.onerror = null; img.src = artDirect(th); }; box.appendChild(img); }
+  else box.textContent = '♪';
+  land.panelTracks = [];
+  $('#lp-list').innerHTML = '<div class="lp-msg">Cargando…</div>';
+  $('#l-panel').classList.add('open');
+  try {
+    let tracks = [];
+    if (o.type === 'playlist') { const raw = await loadAll('/playlists/' + o.ratingKey + '/items'); tracks = raw.map(norm).filter(t => t.key); }
+    else if (o.type === 'artist') { const mc = await plex('/library/metadata/' + o.ratingKey + '/allLeaves'); tracks = (mc.Metadata || []).map(norm).filter(t => t.key); }
+    else tracks = await loadTracks(o.ratingKey);
+    land.panelTracks = tracks;
+    if (!tracks.length) { $('#lp-list').innerHTML = '<div class="lp-msg">No hay canciones aquí.</div>'; return; }
+    landDrawPanel();
+  } catch (e) { $('#lp-list').innerHTML = '<div class="lp-msg">' + esc(e.message) + '</div>'; }
+}
+// Aleatorio desde el panel horizontal (no abre NowPlaying vertical: reproduce directamente).
+function landShuffle() {
+  const list = (land.panelTracks || []).filter(t => t && t.key);
+  if (!list.length) { flash('No hay canciones para mezclar'); return; }
+  const a = list.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const x = a[i]; a[i] = a[j]; a[j] = x; }
+  playQueue(a, 0, null, null, null, land.panelOrigin);
+  flash('Aleatorio · ' + a.length + ' canciones');
+  landDrawPanel();
 }
 function updateLandBar() {
   const t = currentTrack();
@@ -2388,7 +2543,8 @@ function doAct(el) {
   else if (a === 'search') landSearch();
   else if (a === 'lr') { const r = land.searchRows[+el.dataset.i]; if (r) landOpenResult(r); }
   else if (a === 'lr-back') { land.panelMode = 'results'; land.resultsFrom = false; landDrawResults(); }
-  else if (a === 'play-track') { const i = +el.dataset.i; if (land.panelTracks[i]) { playQueue(land.panelTracks, i); landDrawPanel(); } }
+  else if (a === 'play-track') { const i = +el.dataset.i; if (land.panelTracks[i]) { playQueue(land.panelTracks, i, null, null, null, land.panelOrigin); landDrawPanel(); } }
+  else if (a === 'shuf-tracks') landShuffle();
   else if (a === 'heart') { const t = land.panelTracks[+el.dataset.i]; if (t) toggleHeart(t); }
   else if (a === 'more') { const t = land.panelTracks[+el.dataset.i]; if (t) openTrackOptions(t, land.panelTracks.slice()); }
   else if (a === 'l-exit') { forced = null; updateMode(); }
@@ -2586,7 +2742,7 @@ $('#screen').addEventListener('click', e => {
   const cfs = e.target.closest('[data-cf]');
   if (cfs) { if (cfs.dataset.cf === 'search') openSearch(); return; }
   const shf = e.target.closest('[data-shuffle]');
-  if (shf) { const s0 = cur(); if (s0 instanceof ListScreen && s0.shuffle) { s0.selShuffle = false; shufflePlayList(s0.shuffle, s0.title); } return; }
+  if (shf) { const s0 = cur(); if (s0 instanceof ListScreen && s0.shuffle) { s0.selShuffle = false; shufflePlayList(s0.shuffle, s0.title, s0.origin); } return; }
   const s = cur();
   const strow = e.target.closest('.st-row');
   if (strow && s instanceof StationScreen) { const i = +strow.dataset.i; if (i !== s.sel) { s.sel = i; s.draw(); } s.select(); return; }
