@@ -592,7 +592,12 @@ function plexClientHeaders() {
   };
 }
 async function plexCreatePin() {
-  const r = await fetch('https://plex.tv/api/v2/pins?strong=false', { method: 'POST', headers: plexClientHeaders() });
+  // El flujo que abrimos (app.plex.tv/auth) usa un PIN FUERTE (code largo). El PIN de
+  // 4 cifras (strong=false) es para teclearlo a mano en plex.tv/link, no para esta URL.
+  const r = await fetch('https://plex.tv/api/v2/pins?strong=true', {
+    method: 'POST',
+    headers: plexClientHeaders()
+  });
   if (!r.ok) throw new Error('Plex no responde al iniciar sesión (código ' + r.status + ').');
   const j = await r.json();
   if (!j || !j.id || !j.code) throw new Error('Plex no devolvió un PIN válido.');
@@ -669,13 +674,9 @@ async function startPlexLogin(statusEl, btn, preWin) {
   if (statusEl) {
     const a = document.createElement('a');
     a.href = login.url; a.target = '_blank'; a.rel = 'noopener'; a.className = 'loginlink';
-    a.textContent = 'Si no se ha abierto, toca aquí.';
+    a.textContent = 'Si la página de Plex no se ha abierto, toca aquí.';
     statusEl.appendChild(document.createElement('br'));
     statusEl.appendChild(a);
-    const code = document.createElement('div');
-    code.className = 'logincode';
-    code.textContent = 'Código: ' + pin.code;
-    statusEl.appendChild(code);
   }
   const token = await new Promise(resolve => {
     const deadline = Date.now() + 5 * 60 * 1000;
